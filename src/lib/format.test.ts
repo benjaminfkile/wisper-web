@@ -1,11 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { formatDateTime, formatDuration, formatHms, formatPricePerHour, formatUsd } from "./format";
+import {
+  formatDateTime,
+  formatDuration,
+  formatHms,
+  formatPricePerHour,
+  formatSignedUsd,
+  formatUsd,
+} from "./format";
 
 describe("format helpers", () => {
   it("formatUsd converts micro-USD to a dollar string", () => {
     expect(formatUsd(1_500_000)).toBe("$1.50");
     expect(formatUsd(0)).toBe("$0.00");
     expect(formatUsd(250_000)).toBe("$0.25");
+  });
+
+  it("formatSignedUsd prefixes an explicit credit/debit sign", () => {
+    expect(formatSignedUsd(2_000_000)).toBe("+$2.00");
+    expect(formatSignedUsd(-1_500_000)).toBe("−$1.50");
+    expect(formatSignedUsd(0)).toBe("+$0.00");
   });
 
   it("formatPricePerHour renders a per-second price as an hourly rate", () => {

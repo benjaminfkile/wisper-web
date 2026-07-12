@@ -17,6 +17,8 @@ import type {
   TopupRequest,
   TopupResponse,
   Transaction,
+  TransactionPage,
+  TransactionsQuery,
   UpdateHostImagesRequest,
 } from "./types";
 
@@ -121,6 +123,21 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+/**
+ * Normalize a transactions response into a {@link TransactionPage}. The endpoint
+ * may return a bare array (unpaginated) or a `{ transactions, next_cursor }`
+ * envelope; callers get the same shape either way.
+ */
+export function normalizeTransactionPage(
+  body: TransactionPage | Transaction[] | null | undefined,
+): TransactionPage {
+  if (Array.isArray(body)) return { transactions: body };
+  return {
+    transactions: body?.transactions ?? [],
+    next_cursor: body?.next_cursor,
+  };
+}
+
 /** Liveness check against the Wisper API. Never throws. */
 export async function getHealth(): Promise<boolean> {
   try {
@@ -172,8 +189,19 @@ export const wisper = {
   /** GET /v1/billing — wallet balance. */
   getBilling: () => request<Billing>("/v1/billing"),
 
-  /** GET /v1/billing/transactions — ledger entries. */
-  getTransactions: () => request<Transaction[]>("/v1/billing/transactions"),
+  /**
+   * GET /v1/billing/transactions — a page of ledger entries. Accepts an optional
+   * `limit`/`cursor` and always resolves to a normalized {@link TransactionPage}.
+   */
+  getTransactions: (query: TransactionsQuery = {}): Promise<TransactionPage> => {
+    const params = new URLSearchParams();
+    if (query.limit != null) params.set("limit", String(query.limit));
+    if (query.cursor) params.set("cursor", query.cursor);
+    const qs = params.toString();
+    return request<TransactionPage | Transaction[]>(
+      `/v1/billing/transactions${qs ? `?${qs}` : ""}`,
+    ).then(normalizeTransactionPage);
+  },
 
   /** POST /v1/billing/topup — start a Stripe top-up, returns a client secret. */
   topup: (input: TopupRequest) =>
