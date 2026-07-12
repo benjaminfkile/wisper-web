@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDateTime, formatDuration, formatPricePerHour, formatUsd } from "./format";
+import { formatDateTime, formatDuration, formatHms, formatPricePerHour, formatUsd } from "./format";
 
 describe("format helpers", () => {
   it("formatUsd converts micro-USD to a dollar string", () => {
@@ -20,6 +20,14 @@ describe("format helpers", () => {
     expect(formatDuration(1800)).toBe("30m");
     expect(formatDuration(0)).toBe("0m");
     expect(formatDuration(-5)).toBe("0m");
+  });
+
+  it("formatHms renders a zero-padded H:MM:SS clock", () => {
+    expect(formatHms(3723)).toBe("1:02:03");
+    expect(formatHms(63)).toBe("0:01:03");
+    expect(formatHms(0)).toBe("0:00:00");
+    expect(formatHms(-5)).toBe("0:00:00");
+    expect(formatHms(NaN)).toBe("0:00:00");
   });
 
   it("formatDateTime tolerates missing and invalid input", () => {

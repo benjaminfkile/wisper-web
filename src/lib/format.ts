@@ -31,6 +31,19 @@ export function formatDuration(totalSeconds: number): string {
   return parts.join(" ");
 }
 
+/**
+ * Format a duration in seconds as a live clock string, e.g. `3723` -> `1:02:03`
+ * and `63` -> `0:01:03`. Used for the per-second uptime and TTL countdown, where
+ * `formatDuration`'s minute granularity would hide the ticking.
+ */
+export function formatHms(totalSeconds: number): string {
+  const s = Number.isFinite(totalSeconds) ? Math.max(0, Math.floor(totalSeconds)) : 0;
+  const hours = Math.floor(s / SECONDS_PER_HOUR);
+  const minutes = Math.floor((s % SECONDS_PER_HOUR) / 60);
+  const seconds = s % 60;
+  return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 /** Format an ISO timestamp as a locale date-time, tolerating missing/invalid input. */
 export function formatDateTime(iso?: string): string {
   if (!iso) return "—";
