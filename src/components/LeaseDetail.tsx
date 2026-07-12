@@ -19,6 +19,8 @@ import Typography from "@mui/material/Typography";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { wisper, WisperError } from "@/lib/wisper/client";
+import LeaseConsole from "./LeaseConsole";
+import LeaseExec from "./LeaseExec";
 import { formatDateTime, formatHms, formatUsd } from "@/lib/format";
 import { isTerminalLease, leaseStatusColor } from "@/lib/leaseStatus";
 import {
@@ -281,15 +283,11 @@ export default function LeaseDetail({ leaseId, pollMs = 5000 }: LeaseDetailProps
           </Box>
 
           <Box role="tabpanel" hidden={tab !== 1} id="lease-tabpanel-1" aria-labelledby="lease-tab-1">
-            {tab === 1 && (
-              <Alert severity="info">Console (interactive shell) arrives in a later milestone.</Alert>
-            )}
+            {tab === 1 && <LeaseConsole leaseId={leaseId} disabled={lease.status !== "active"} />}
           </Box>
 
           <Box role="tabpanel" hidden={tab !== 2} id="lease-tabpanel-2" aria-labelledby="lease-tab-2">
-            {tab === 2 && (
-              <Alert severity="info">Exec (run a command) arrives in a later milestone.</Alert>
-            )}
+            {tab === 2 && <LeaseExec leaseId={leaseId} disabled={lease.status !== "active"} />}
           </Box>
         </>
       )}
