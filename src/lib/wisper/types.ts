@@ -201,6 +201,8 @@ export interface Host {
   status?: string;
   images?: HostImage[];
   created_at?: string;
+  /** The manager WebSocket the host agent connects back to. */
+  manager_ws?: string;
 }
 
 /** Body for POST /v1/hosts (register a host). */
@@ -212,10 +214,13 @@ export interface RegisterHostRequest {
 /**
  * Response for POST /v1/hosts. The `agent_token` is returned exactly once at
  * registration and cannot be retrieved again, so callers must surface it now.
+ * `manager_ws` is the WebSocket the freshly-installed agent dials back to.
  */
 export interface RegisterHostResponse {
   host: Host;
   agent_token: string;
+  /** The manager WebSocket URL the agent connects to (falls back to `host.manager_ws`). */
+  manager_ws?: string;
 }
 
 /** Body for PUT/PATCH /v1/hosts/:id/images. */
@@ -228,11 +233,22 @@ export interface ConnectResponse {
   onboarding_url: string;
 }
 
+/** Stripe Connect account state for the host, surfaced with earnings. */
+export type ConnectStatus = "not_started" | "pending" | "active" | "restricted";
+
 /** Host earnings summary (GET /v1/earnings). */
 export interface Earnings {
   /** Total earned, in micro-USD. */
   total_micro_usd: number;
   /** Amount available for payout, in micro-USD. */
   available_micro_usd?: number;
+  /** Earned but not yet available for payout, in micro-USD. */
+  pending_micro_usd?: number;
+  /** Lifetime amount already paid out, in micro-USD. */
+  paid_out_micro_usd?: number;
   currency: string;
+  /** Whether Stripe Connect payouts are enabled for this account. */
+  payouts_enabled?: boolean;
+  /** Coarse Stripe Connect onboarding state, when reported. */
+  connect_status?: ConnectStatus;
 }

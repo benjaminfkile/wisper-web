@@ -30,6 +30,24 @@ export function formatPricePerHour(microUsdPerSecond: number): string {
   return `${formatUsd(microUsdPerSecond * SECONDS_PER_HOUR)}/hr`;
 }
 
+/**
+ * Convert a per-second price (micro-USD/second) to a plain dollars-per-hour
+ * number, e.g. `278` -> `1.0008`. Used to seed the host image price editor, which
+ * lets hosts think in `$ /hr` rather than the contract's per-second micro-price.
+ */
+export function microPerSecondToPerHour(microUsdPerSecond: number): number {
+  return (microUsdPerSecond * SECONDS_PER_HOUR) / MICRO_PER_USD;
+}
+
+/**
+ * Convert a dollars-per-hour rate back to the contract's per-second micro-USD
+ * price (rounded to a whole micro-unit), e.g. `1` -> `278`. Inverse of
+ * {@link microPerSecondToPerHour}; used when saving edited host image prices.
+ */
+export function perHourToMicroPerSecond(dollarsPerHour: number): number {
+  return Math.round((dollarsPerHour * MICRO_PER_USD) / SECONDS_PER_HOUR);
+}
+
 /** Format a TTL / duration in seconds as a compact `1h 30m` style string. */
 export function formatDuration(totalSeconds: number): string {
   if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return "0m";
