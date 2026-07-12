@@ -133,11 +133,17 @@ export interface ShellTicket {
   ticket: string;
 }
 
-/** Wallet balance (GET /v1/billing). */
+/** Wallet balance + usage summary (GET /v1/billing). */
 export interface Billing {
   /** Current balance in micro-USD. */
   balance_micro_usd: number;
   currency: string;
+  /** Optional lifetime spend on leases, in micro-USD. */
+  spent_micro_usd?: number;
+  /** Optional lifetime top-ups, in micro-USD. */
+  topped_up_micro_usd?: number;
+  /** Optional funds held for in-flight leases, in micro-USD. */
+  pending_micro_usd?: number;
 }
 
 /** A billing ledger entry (GET /v1/billing/transactions). */
@@ -148,6 +154,24 @@ export interface Transaction {
   type: string;
   description?: string;
   created_at: string;
+}
+
+/** Query params for the paginated transactions ledger. */
+export interface TransactionsQuery {
+  /** Page size to request. */
+  limit?: number;
+  /** Opaque cursor returned as `next_cursor` by the previous page. */
+  cursor?: string;
+}
+
+/**
+ * A page of ledger entries. The API may return either a bare array or this
+ * envelope; the client normalizes both to this shape (see `getTransactions`).
+ */
+export interface TransactionPage {
+  transactions: Transaction[];
+  /** Cursor for the next page, absent when this is the last page. */
+  next_cursor?: string;
 }
 
 /** Body for POST /v1/billing/topup. */

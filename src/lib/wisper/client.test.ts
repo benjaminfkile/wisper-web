@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getAuthToken, getHealth, request, setAuthToken, wisper, WisperError } from "./client";
+import {
+  getAuthToken,
+  getHealth,
+  normalizeTransactionPage,
+  request,
+  setAuthToken,
+  wisper,
+  WisperError,
+} from "./client";
 
 /** Build a JSON `Response` for a stubbed fetch. */
 function jsonResponse(body: unknown, status = 200): Response {
@@ -110,6 +118,34 @@ describe("wisper client", () => {
     const spy = stubFetch(() => jsonResponse({ id: "a/b", status: "active" }));
     await wisper.getLease("a/b");
     expect(spy.mock.calls[0][0]).toBe("/wisper/v1/leases/a%2Fb");
+  });
+
+  it("normalizeTransactionPage accepts a bare array or an envelope", () => {
+    expect(normalizeTransactionPage([{ id: "t1", amount_micro_usd: 1, type: "topup", created_at: "" }]))
+      .toEqual({ transactions: [{ id: "t1", amount_micro_usd: 1, type: "topup", created_at: "" }] });
+    expect(normalizeTransactionPage({ transactions: [], next_cursor: "c2" })).toEqual({
+      transactions: [],
+      next_cursor: "c2",
+    });
+    expect(normalizeTransactionPage(null)).toEqual({ transactions: [] });
+  });
+
+  it("getTransactions passes limit/cursor and normalizes a bare array", async () => {
+    const spy = stubFetch(() =>
+      jsonResponse([{ id: "t1", amount_micro_usd: 5, type: "topup", created_at: "" }]),
+    );
+    const page = await wisper.getTransactions({ limit: 20, cursor: "c1" });
+    expect(spy.mock.calls[0][0]).toBe("/wisper/v1/billing/transactions?limit=20&cursor=c1");
+    expect(page).toEqual({
+      transactions: [{ id: "t1", amount_micro_usd: 5, type: "topup", created_at: "" }],
+    });
+  });
+
+  it("getTransactions omits the query string when no params are given", async () => {
+    const spy = stubFetch(() => jsonResponse({ transactions: [], next_cursor: "c9" }));
+    const page = await wisper.getTransactions();
+    expect(spy.mock.calls[0][0]).toBe("/wisper/v1/billing/transactions");
+    expect(page.next_cursor).toBe("c9");
   });
 
   it("WisperError carries status, code, and message", () => {

@@ -12,6 +12,16 @@ export function formatUsd(microUsd: number, fractionDigits = 2): string {
 }
 
 /**
+ * Format a signed micro-USD amount with an explicit `+`/`−` sign, e.g. a credit
+ * `2_000_000` -> `+$2.00` and a debit `-1_500_000` -> `−$1.50`. Used by the ledger
+ * where the direction of each entry matters at a glance.
+ */
+export function formatSignedUsd(microUsd: number, fractionDigits = 2): string {
+  const sign = microUsd < 0 ? "−" : "+";
+  return `${sign}${formatUsd(Math.abs(microUsd), fractionDigits)}`;
+}
+
+/**
  * Format a per-second price (micro-USD/second, the catalog's price unit) as an
  * hourly rate, e.g. `278` -> `$1.00/hr`. Hourly reads more naturally than the
  * raw per-second micro-price for a by-the-minute product.
