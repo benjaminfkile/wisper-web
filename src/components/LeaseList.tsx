@@ -163,14 +163,23 @@ export default function LeaseList({ pollMs = 5000 }: LeaseListProps) {
                       {lease.cost_micro_usd != null ? formatUsd(lease.cost_micro_usd) : "—"}
                     </TableCell>
                     <TableCell align="right">
-                      <Button
-                        size="small"
-                        color="error"
-                        disabled={terminal || releasingId === lease.id}
-                        onClick={() => void handleRelease(lease.id)}
-                      >
-                        {releasingId === lease.id ? "Releasing…" : "Release"}
-                      </Button>
+                      <Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}>
+                        <Button
+                          size="small"
+                          component={NextLink}
+                          href={`/leases/${lease.id}`}
+                        >
+                          View
+                        </Button>
+                        <Button
+                          size="small"
+                          color="error"
+                          disabled={terminal || releasingId === lease.id}
+                          onClick={() => void handleRelease(lease.id)}
+                        >
+                          {releasingId === lease.id ? "Releasing…" : "Release"}
+                        </Button>
+                      </Stack>
                     </TableCell>
                   </TableRow>
                 );

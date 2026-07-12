@@ -95,12 +95,23 @@ export interface Lease {
   network: WispNetwork;
   resources?: LeaseResources;
   ttl_seconds: number;
+  /**
+   * Server's snapshot of the lease's remaining time-to-live, in seconds. The
+   * detail view counts this down live between polls and re-syncs to the value
+   * from each GET /v1/leases/:id.
+   */
+  ttl_seconds_remaining?: number;
   created_at: string;
   started_at?: string;
   expires_at?: string;
   ended_at?: string;
   /** Accrued cost so far, in micro-USD. */
   cost_micro_usd?: number;
+  /**
+   * Effective per-second price for this lease, in micro-USD/second. When present
+   * the detail view uses it to tick running cost forward between polls.
+   */
+  price_micro_usd_per_second?: number;
 }
 
 /** Body for POST /v1/leases/:id/exec. */
