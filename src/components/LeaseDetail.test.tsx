@@ -63,19 +63,21 @@ describe("LeaseDetail", () => {
     expect(screen.getByText(/^\$1\.\d{4}$/)).toBeInTheDocument();
   });
 
-  it("exposes Overview plus placeholder Console and Exec tabs", async () => {
+  it("exposes Overview, Console, and Exec tabs; gates them off until the lease is running", async () => {
     const user = userEvent.setup();
-    getLease.mockResolvedValue(lease());
+    // A non-active lease keeps the console/exec gated (info state), so this test
+    // never mounts the real xterm terminal (unsupported in jsdom).
+    getLease.mockResolvedValue(lease({ status: "provisioning" }));
     render(<LeaseDetail leaseId="l1" pollMs={0} />);
-    await screen.findByText("active");
+    await screen.findByText("provisioning");
 
     expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Console" }));
-    expect(await screen.findByText(/console \(interactive shell\)/i)).toBeInTheDocument();
+    expect(await screen.findByText(/console is available while the lease is running/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Exec" }));
-    expect(await screen.findByText(/exec \(run a command\)/i)).toBeInTheDocument();
+    expect(await screen.findByText(/exec is available while the lease is running/i)).toBeInTheDocument();
   });
 
   it("re-syncs the lease by polling", async () => {

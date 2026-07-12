@@ -41,6 +41,22 @@ export function getAuthToken(): string | null {
   return authToken;
 }
 
+/** Absolute same-origin path for an API route (e.g. `/wisper/v1/...`). */
+export function apiUrl(path: string): string {
+  return `${BASE}${path}`;
+}
+
+/**
+ * Headers for a hand-rolled `fetch` (streaming exec, etc.) that needs the same
+ * bearer auth as `request` but can't go through it — merges the current token
+ * with any caller-supplied headers.
+ */
+export function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { ...extra };
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  return headers;
+}
+
 /** A typed Wisper API error, parsed from the uniform error envelope. */
 export class WisperError extends Error {
   constructor(
