@@ -1,16 +1,20 @@
 "use client";
 
+import NextLink from "next/link";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import ProtectedShell from "@/components/ProtectedShell";
 import { useAuth } from "@/lib/auth/AuthContext";
 
 function Dashboard() {
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
+  const isHost = hasRole("host");
 
   return (
     <Stack spacing={3}>
@@ -35,11 +39,41 @@ function Dashboard() {
           </Typography>
           <Typography color="text.secondary">
             Browse the catalog to launch a lease, manage running leases, or top up your wallet.
-            Host tools appear here once your account holds the host role. Catalog, console, and
-            billing features are wired up in the following milestones.
+            Host tools appear here once your account holds the host role.
           </Typography>
         </CardContent>
       </Card>
+
+      {isHost ? (
+        <Card variant="outlined">
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Host tools
+            </Typography>
+            <Typography color="text.secondary" sx={{ mb: 2 }}>
+              Manage your hosts and image pricing, track earnings, and set up Stripe payouts.
+            </Typography>
+            <Button component={NextLink} href="/host" variant="outlined" startIcon={<RocketLaunchIcon />}>
+              Open host tools
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card variant="outlined">
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Become a host
+            </Typography>
+            <Typography color="text.secondary" sx={{ mb: 2 }}>
+              Rent out a machine to run leases and earn. Your consumer access stays — the host role is
+              added on top.
+            </Typography>
+            <Button component={NextLink} href="/host" variant="contained" startIcon={<RocketLaunchIcon />}>
+              Become a host
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </Stack>
   );
 }

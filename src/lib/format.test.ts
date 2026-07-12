@@ -6,6 +6,8 @@ import {
   formatPricePerHour,
   formatSignedUsd,
   formatUsd,
+  microPerSecondToPerHour,
+  perHourToMicroPerSecond,
 } from "./format";
 
 describe("format helpers", () => {
@@ -25,6 +27,15 @@ describe("format helpers", () => {
     // 277.77.. micro-USD/second ≈ $1.00/hr
     expect(formatPricePerHour(1_000_000 / 3600)).toBe("$1.00/hr");
     expect(formatPricePerHour(0)).toBe("$0.00/hr");
+  });
+
+  it("converts between per-second micro-USD and dollars-per-hour", () => {
+    // $1.00/hr <-> 277.77.. micro-USD/second (rounded to whole micro-units).
+    expect(perHourToMicroPerSecond(1)).toBe(278);
+    expect(perHourToMicroPerSecond(0)).toBe(0);
+    expect(microPerSecondToPerHour(1_000_000)).toBe(3600);
+    // Round-trips a whole-cent hourly price within a hair.
+    expect(microPerSecondToPerHour(perHourToMicroPerSecond(2.5))).toBeCloseTo(2.5, 2);
   });
 
   it("formatDuration renders hours and minutes compactly", () => {
