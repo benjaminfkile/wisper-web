@@ -29,6 +29,7 @@ const CATALOG: Catalog = {
       name: "Falcon",
       region: "us-east",
       status: "online",
+      os: "linux",
       images: [
         { id: "img1", name: "ubuntu-22.04", price_micro_usd_per_second: 1_000_000 / 3600 },
         { id: "img2", name: "gpu-cuda", price_micro_usd_per_second: 2_000_000 / 3600 },
@@ -89,6 +90,38 @@ describe("CatalogBrowser", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: /create lease/i })).toBeInTheDocument();
     expect(within(dialog).getByText(/on Falcon/i)).toBeInTheDocument();
+  });
+
+  it("shows an OS chip only for hosts that advertise one", async () => {
+    getCatalog.mockResolvedValue(CATALOG);
+    render(<CatalogBrowser />);
+
+    // Falcon advertises linux; its card carries a "Linux" chip.
+    const falconCard = (await screen.findByText("Falcon")).closest(".MuiCard-root");
+    expect(falconCard).not.toBeNull();
+    expect(within(falconCard as HTMLElement).getByText("Linux")).toBeInTheDocument();
+
+    // Condor has no os; nothing is rendered for it.
+    const condorCard = screen.getByText("Condor").closest(".MuiCard-root");
+    expect(within(condorCard as HTMLElement).queryByText(/linux|windows/i)).toBeNull();
+  });
+
+  it("labels a Windows host with a Windows chip", async () => {
+    getCatalog.mockResolvedValue({
+      hosts: [
+        {
+          id: "hw",
+          name: "Kestrel",
+          region: "us-west",
+          status: "online",
+          os: "windows",
+          images: [{ id: "w1", name: "windows-2022", price_micro_usd_per_second: 300 }],
+        },
+      ],
+    });
+    render(<CatalogBrowser />);
+
+    expect(await screen.findByText("Windows")).toBeInTheDocument();
   });
 
   it("shows an error alert when the catalog fails to load", async () => {

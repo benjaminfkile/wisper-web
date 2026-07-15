@@ -22,6 +22,7 @@ import { wisper, WisperError } from "@/lib/wisper/client";
 import LeaseConsole from "./LeaseConsole";
 import LeaseExec from "./LeaseExec";
 import { formatDateTime, formatHms, formatUsd } from "@/lib/format";
+import { osLabel } from "@/lib/os";
 import { isTerminalLease, leaseStatusColor } from "@/lib/leaseStatus";
 import {
   baseTtlRemainingSeconds,
@@ -252,6 +253,7 @@ export default function LeaseDetail({ leaseId, pollMs = 5000 }: LeaseDetailProps
                     <Field label="Image">{lease.host_image_id}</Field>
                     <Field label="Host">{lease.host_id}</Field>
                     <Field label="Network">{lease.network}</Field>
+                    {lease.os && <Field label="OS">{osLabel(lease.os)}</Field>}
                     <Field label="TTL">{formatHms(lease.ttl_seconds)}</Field>
                     <Field label="Created">{formatDateTime(lease.created_at)}</Field>
                     <Field label="Started">{formatDateTime(lease.started_at)}</Field>
@@ -287,7 +289,9 @@ export default function LeaseDetail({ leaseId, pollMs = 5000 }: LeaseDetailProps
           </Box>
 
           <Box role="tabpanel" hidden={tab !== 2} id="lease-tabpanel-2" aria-labelledby="lease-tab-2">
-            {tab === 2 && <LeaseExec leaseId={leaseId} disabled={lease.status !== "active"} />}
+            {tab === 2 && (
+              <LeaseExec leaseId={leaseId} os={lease.os} disabled={lease.status !== "active"} />
+            )}
           </Box>
         </>
       )}
