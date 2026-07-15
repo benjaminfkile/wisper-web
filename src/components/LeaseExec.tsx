@@ -12,9 +12,13 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { wisper, WisperError } from "@/lib/wisper/client";
 import { execStream, tokenizeCommand, type ExecStreamEvent } from "@/lib/wisper/exec";
+import { execCommandPlaceholder } from "@/lib/os";
+import type { HostOs } from "@/lib/wisper/types";
 
 interface LeaseExecProps {
   leaseId: string;
+  /** OS of the lease, when known — tunes the command placeholder. */
+  os?: HostOs;
   /** Whether exec is available (only for a running lease). */
   disabled?: boolean;
 }
@@ -32,7 +36,7 @@ interface OutputSegment {
  * monospace with stdout/stderr distinguished by color and auto-scrolled, and the
  * exit code is shown in a chip once the command finishes.
  */
-export default function LeaseExec({ leaseId, disabled = false }: LeaseExecProps) {
+export default function LeaseExec({ leaseId, os, disabled = false }: LeaseExecProps) {
   const [command, setCommand] = useState("");
   const [stdin, setStdin] = useState("");
   const [streaming, setStreaming] = useState(true);
@@ -125,7 +129,7 @@ export default function LeaseExec({ leaseId, disabled = false }: LeaseExecProps)
     <Stack spacing={2}>
       <TextField
         label="Command"
-        placeholder='e.g. sh -c "echo hello"'
+        placeholder={execCommandPlaceholder(os)}
         value={command}
         onChange={(e) => setCommand(e.target.value)}
         onKeyDown={(e) => {

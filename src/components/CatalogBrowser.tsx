@@ -20,6 +20,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import CreateLeaseDialog from "@/components/CreateLeaseDialog";
 import { wisper, WisperError } from "@/lib/wisper/client";
 import { formatPricePerHour } from "@/lib/format";
+import { osLabel } from "@/lib/os";
 import type { CatalogHost, Lease, PricedImage } from "@/lib/wisper/types";
 
 const ALL_REGIONS = "__all__";
@@ -173,6 +174,14 @@ export default function CatalogBrowser() {
                   <Typography variant="h6" sx={{ flexGrow: 1 }} noWrap>
                     {host.name}
                   </Typography>
+                  {host.os ? (
+                    <Chip
+                      size="small"
+                      label={osLabel(host.os)}
+                      variant="outlined"
+                      aria-label={`operating system ${osLabel(host.os)}`}
+                    />
+                  ) : null}
                   {host.status ? (
                     <Chip
                       size="small"

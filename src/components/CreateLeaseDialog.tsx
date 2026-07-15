@@ -16,6 +16,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { wisper, WisperError } from "@/lib/wisper/client";
 import { formatPricePerHour } from "@/lib/format";
+import { userdataHint } from "@/lib/os";
 import type {
   CatalogHost,
   CreateLeaseRequest,
@@ -92,6 +93,7 @@ export default function CreateLeaseDialog({
   }, [ttlValue, ttlUnit]);
 
   const price = image?.price_micro_usd_per_second;
+  const osHint = userdataHint(host?.os);
 
   async function handleSubmit() {
     if (!host || !image || ttlSeconds <= 0) return;
@@ -225,7 +227,8 @@ export default function CreateLeaseDialog({
               label="Userdata (optional)"
               value={userdata}
               onChange={(e) => setUserdata(e.target.value)}
-              placeholder="#!/bin/sh — cloud-init / startup script"
+              placeholder={osHint.placeholder}
+              helperText={osHint.helper}
               multiline
               minRows={2}
               fullWidth

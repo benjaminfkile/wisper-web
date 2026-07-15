@@ -83,6 +83,26 @@ describe("CreateLeaseDialog", () => {
     );
   });
 
+  it("keeps the POSIX userdata hint for a linux host", () => {
+    renderDialog({ host: { ...host, os: "linux" } });
+    expect(screen.getByPlaceholderText(/#!\/bin\/sh/i)).toBeInTheDocument();
+  });
+
+  it("switches the userdata hint to cmd/PowerShell for a windows host", () => {
+    renderDialog({ host: { ...host, os: "windows" } });
+    const field = screen.getByLabelText(/Userdata/i);
+    expect(field).toHaveAttribute("placeholder", expect.stringMatching(/powershell|cmd/i));
+    expect(screen.getByText(/cmd or PowerShell/i)).toBeInTheDocument();
+  });
+
+  it("uses an OS-neutral userdata hint when the host os is unknown", () => {
+    renderDialog({ host: { ...host, os: undefined } });
+    const field = screen.getByLabelText(/Userdata/i);
+    const placeholder = field.getAttribute("placeholder") ?? "";
+    expect(placeholder).toMatch(/linux/i);
+    expect(placeholder).toMatch(/windows/i);
+  });
+
   it("surfaces a 402 insufficient_funds with a top-up link", async () => {
     const user = userEvent.setup();
     createLease.mockRejectedValue(new WisperError(402, "insufficient_funds", "wallet too low"));

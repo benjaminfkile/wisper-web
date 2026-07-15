@@ -63,6 +63,32 @@ describe("LeaseDetail", () => {
     expect(screen.getByText(/^\$1\.\d{4}$/)).toBeInTheDocument();
   });
 
+  it("shows the OS field when the lease advertises one", async () => {
+    getLease.mockResolvedValue(lease({ os: "windows" }));
+    render(<LeaseDetail leaseId="l1" pollMs={0} />);
+
+    expect(await screen.findByText("OS")).toBeInTheDocument();
+    expect(screen.getByText("Windows")).toBeInTheDocument();
+  });
+
+  it("omits the OS field when the lease os is unknown", async () => {
+    getLease.mockResolvedValue(lease({ os: undefined }));
+    render(<LeaseDetail leaseId="l1" pollMs={0} />);
+
+    await screen.findByText("active");
+    expect(screen.queryByText("OS")).not.toBeInTheDocument();
+  });
+
+  it("switches the Exec command placeholder for a windows lease", async () => {
+    const user = userEvent.setup();
+    getLease.mockResolvedValue(lease({ os: "windows" }));
+    render(<LeaseDetail leaseId="l1" pollMs={0} />);
+    await screen.findByText("active");
+
+    await user.click(screen.getByRole("tab", { name: "Exec" }));
+    expect(await screen.findByPlaceholderText(/cmd \/c ver/i)).toBeInTheDocument();
+  });
+
   it("exposes Overview, Console, and Exec tabs; gates them off until the lease is running", async () => {
     const user = userEvent.setup();
     // A non-active lease keeps the console/exec gated (info state), so this test

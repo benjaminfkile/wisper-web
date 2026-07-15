@@ -45,6 +45,13 @@ export type LeaseStatus =
 /** Container network mode. */
 export type WispNetwork = "none" | "open" | "egress";
 
+/**
+ * Operating system a host/lease container serves. Optional on every shape: older
+ * API builds omit it, so consumers must tolerate `undefined` and fall back to an
+ * OS-neutral presentation.
+ */
+export type HostOs = "linux" | "windows";
+
 /** A host image offered in the catalog, with its price. */
 export interface PricedImage {
   id: string;
@@ -61,6 +68,8 @@ export interface CatalogHost {
   name: string;
   region?: string;
   status?: string;
+  /** OS the host's containers run, when advertised (older API omits it). */
+  os?: HostOs;
   images: PricedImage[];
 }
 
@@ -95,6 +104,8 @@ export interface Lease {
   network: WispNetwork;
   resources?: LeaseResources;
   ttl_seconds: number;
+  /** OS of the leased container, when known (older API omits it). */
+  os?: HostOs;
   /**
    * Server's snapshot of the lease's remaining time-to-live, in seconds. The
    * detail view counts this down live between polls and re-syncs to the value
@@ -199,6 +210,8 @@ export interface Host {
   name: string;
   region?: string;
   status?: string;
+  /** OS the host's containers run, when advertised (GET /v1/hosts/:id). */
+  os?: HostOs;
   images?: HostImage[];
   created_at?: string;
   /** The manager WebSocket the host agent connects back to. */
