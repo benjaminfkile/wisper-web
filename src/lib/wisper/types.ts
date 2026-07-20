@@ -246,6 +246,49 @@ export interface ConnectResponse {
   onboarding_url: string;
 }
 
+/**
+ * A scope a consumer API key can carry. Scopes are a subset of the minting
+ * account's roles (`consumer`/`host`); `admin` exists in the contract but the UI
+ * never offers it. The backend is authoritative and caps requested scopes to the
+ * minter's roles, so the UI only surfaces its validation errors verbatim.
+ */
+export type ApiKeyScope = "consumer" | "host" | "admin";
+
+/**
+ * A machine API key (GET /v1/me/api-keys). The full secret (`wck_live_<64-hex>`)
+ * is only ever returned once at creation; the list carries just the non-secret
+ * `token_prefix` and metadata. Revoked keys stay listed with `revoked_at` set.
+ */
+export interface ApiKey {
+  id: string;
+  name: string;
+  /** Non-secret leading portion of the key, e.g. `wck_live_abcd…`. */
+  token_prefix: string;
+  scopes: ApiKeyScope[];
+  created_at: string;
+  /** When the key last authenticated a request, if ever. */
+  last_used_at?: string;
+  /** Set once the key is revoked; a revoked key 401s but stays in the list. */
+  revoked_at?: string;
+}
+
+/** Body for POST /v1/me/api-keys (mint a key). */
+export interface CreateApiKeyRequest {
+  name: string;
+  /** Requested scopes; the backend caps them to the minter's roles. */
+  scopes?: ApiKeyScope[];
+}
+
+/**
+ * Response for POST /v1/me/api-keys. The `token` is the full `wck_live_<64-hex>`
+ * secret, returned EXACTLY once at creation and never retrievable again, so
+ * callers must surface it now. `key` is the stored metadata for the list.
+ */
+export interface CreateApiKeyResponse {
+  key: ApiKey;
+  token: string;
+}
+
 /** Stripe Connect account state for the host, surfaced with earnings. */
 export type ConnectStatus = "not_started" | "pending" | "active" | "restricted";
 

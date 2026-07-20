@@ -18,6 +18,7 @@ import Stack from "@mui/material/Stack";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import LogoutIcon from "@mui/icons-material/Logout";
+import VpnKeyIcon from "@mui/icons-material/VpnKey";
 import HealthBadge from "@/components/HealthBadge";
 import { useAuth } from "@/lib/auth/AuthContext";
 import type { Role } from "@/lib/wisper/types";
@@ -115,6 +116,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 ))}
               </Stack>
             </Box>
+            <Divider />
+            <MenuItem
+              component={NextLink}
+              href="/account/api-keys"
+              onClick={closeMenu}
+              selected={pathname.startsWith("/account/api-keys")}
+            >
+              <ListItemIcon>
+                <VpnKeyIcon fontSize="small" />
+              </ListItemIcon>
+              API keys
+            </MenuItem>
             <Divider />
             <MenuItem
               onClick={() => {

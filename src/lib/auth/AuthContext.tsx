@@ -19,12 +19,23 @@ import * as apiKey from "./apiKey";
 /** Where the provider is in restoring / establishing a session. */
 export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
+/**
+ * How the current session was established: an interactive Cognito sign-in, or a
+ * pasted wisper-api API key (the local-dev fallback). Some actions are gated on
+ * this — notably minting API keys, which is JWT-only (a key cannot mint keys).
+ */
+export type AuthMethod = "cognito" | "apiKey";
+
 export interface AuthContextValue {
   status: AuthStatus;
   /** The signed-in account (with additive roles), or null. */
   user: Me | null;
   /** The Cognito ID-token JWT sent as the API bearer token, or null. */
   token: string | null;
+  /** How the active session was established, or null when signed out. */
+  authMethod: AuthMethod | null;
+  /** Convenience: is the active session backed by a pasted API key (not a JWT)? */
+  isApiKeySession: boolean;
   /** Convenience: does the account hold the given role? */
   hasRole: (role: Role) => boolean;
   signIn: (email: string, password: string) => Promise<void>;
@@ -55,14 +66,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<Me | null>(null);
   const [token, setTokenState] = useState<string | null>(null);
+  const [authMethod, setAuthMethod] = useState<AuthMethod | null>(null);
   // Guards against a late session-restore overwriting a fresh sign-out.
   const generation = useRef(0);
 
-  // Establish a session from a JWT: attach the bearer token and hydrate /v1/me.
-  const establish = useCallback(async (jwt: string) => {
+  // Establish a session from a bearer credential (a Cognito JWT or an API key):
+  // attach the token and hydrate /v1/me, recording which method was used.
+  const establish = useCallback(async (credential: string, method: AuthMethod) => {
     const gen = ++generation.current;
-    setAuthToken(jwt);
-    setTokenState(jwt);
+    setAuthToken(credential);
+    setTokenState(credential);
+    setAuthMethod(method);
     try {
       const me = await wisper.me();
       if (generation.current !== gen) return; // superseded by a newer auth action
@@ -70,10 +84,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus("authenticated");
     } catch (err) {
       if (generation.current !== gen) return;
-      // The token was accepted by Cognito but /v1/me failed; treat as signed out
-      // so the UI doesn't present a half-authenticated shell.
+      // The credential was accepted upstream but /v1/me failed; treat as signed
+      // out so the UI doesn't present a half-authenticated shell.
       setAuthToken(null);
       setTokenState(null);
+      setAuthMethod(null);
       setUser(null);
       setStatus("unauthenticated");
       throw err;
@@ -84,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     generation.current++;
     setAuthToken(null);
     setTokenState(null);
+    setAuthMethod(null);
     setUser(null);
     setStatus("unauthenticated");
   }, []);
@@ -97,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!active) return;
       if (jwt) {
         try {
-          await establish(jwt);
+          await establish(jwt, "cognito");
         } catch {
           // establish() already reset to unauthenticated.
         }
@@ -106,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const key = apiKey.getStoredApiKey();
       if (key) {
         try {
-          await establish(key);
+          await establish(key, "apiKey");
         } catch {
           // Stored key is invalid/revoked: drop it so we don't retry it forever.
           apiKey.clearStoredApiKey();
@@ -123,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (email: string, password: string) => {
       const jwt = await cognito.signIn(email, password);
-      await establish(jwt);
+      await establish(jwt, "cognito");
     },
     [establish],
   );
@@ -132,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (key: string) => {
       apiKey.storeApiKey(key);
       try {
-        await establish(key);
+        await establish(key, "apiKey");
       } catch (err) {
         // Backend rejected the key (e.g. 401 bad/revoked): don't keep it around.
         apiKey.clearStoredApiKey();
@@ -163,6 +179,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       status,
       user,
       token,
+      authMethod,
+      isApiKeySession: authMethod === "apiKey",
       hasRole,
       signIn,
       signInWithApiKey,
@@ -172,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refresh,
     }),
-    [status, user, token, hasRole, signIn, signInWithApiKey, signOut, refresh],
+    [status, user, token, authMethod, hasRole, signIn, signInWithApiKey, signOut, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
