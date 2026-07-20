@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   baseTtlRemainingSeconds,
-  costRateMicroUsdPerSecond,
+  costRateCentsPerSecond,
   leaseUptimeSeconds,
-  liveCostMicroUsd,
+  liveCostCents,
   liveTtlRemainingSeconds,
 } from "./leaseTiming";
 import type { Lease } from "./wisper/types";
@@ -78,28 +78,29 @@ describe("liveTtlRemainingSeconds", () => {
   });
 });
 
-describe("costRateMicroUsdPerSecond", () => {
-  it("uses the lease's per-second price when present", () => {
-    expect(costRateMicroUsdPerSecond(lease({ price_micro_usd_per_second: 278 }), START_MS)).toBe(278);
+describe("costRateCentsPerSecond", () => {
+  it("uses the lease's cents-per-minute price (÷60) when present", () => {
+    // 60 cents/min -> 1 cent/second.
+    expect(costRateCentsPerSecond(lease({ price_cents_per_min: 60 }), START_MS)).toBe(1);
   });
 
   it("derives the rate from accrued cost over uptime otherwise", () => {
-    // 60s of uptime, $0.60 accrued -> 10_000 micro-USD/second.
-    const l = lease({ cost_micro_usd: 600_000 });
-    expect(costRateMicroUsdPerSecond(l, START_MS + 60_000)).toBe(10_000);
+    // 60s of uptime, 600 cents accrued -> 10 cents/second.
+    const l = lease({ cost_cents: 600 });
+    expect(costRateCentsPerSecond(l, START_MS + 60_000)).toBe(10);
   });
 
   it("is 0 when no price and no uptime are known", () => {
-    expect(costRateMicroUsdPerSecond(lease({ started_at: undefined }), START_MS)).toBe(0);
+    expect(costRateCentsPerSecond(lease({ started_at: undefined }), START_MS)).toBe(0);
   });
 });
 
-describe("liveCostMicroUsd", () => {
+describe("liveCostCents", () => {
   it("adds rate over elapsed seconds to the base cost", () => {
-    expect(liveCostMicroUsd(1_000_000, 278, 60)).toBe(1_000_000 + 278 * 60);
+    expect(liveCostCents(100, 1, 60)).toBe(100 + 1 * 60);
   });
 
   it("clamps negative rate and elapsed to 0", () => {
-    expect(liveCostMicroUsd(500_000, -5, -10)).toBe(500_000);
+    expect(liveCostCents(50, -5, -10)).toBe(50);
   });
 });

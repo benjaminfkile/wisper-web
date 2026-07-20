@@ -1,51 +1,52 @@
-// Formatting helpers for the contract's micro-USD money unit and lease timing.
-// Prices come from the API as `price_micro_usd_per_second`; balances and accrued
-// costs come as micro-USD. Keeping the conversions here means the UI never does
-// ad-hoc `/ 1_000_000` math inline.
+// Formatting helpers for the contract's CENTS money unit and lease timing.
+// The real wisper-api denominates money in whole cents: catalog prices come as
+// `price_cents_per_min`, balances/accrued costs come as `*_cents`. Keeping the
+// conversions here means the UI never does ad-hoc `/ 100` math inline.
 
-const MICRO_PER_USD = 1_000_000;
+const CENTS_PER_USD = 100;
 const SECONDS_PER_HOUR = 3600;
+const MINUTES_PER_HOUR = 60;
 
-/** Format a micro-USD amount as a dollar string, e.g. `1_500_000` -> `$1.50`. */
-export function formatUsd(microUsd: number, fractionDigits = 2): string {
-  return `$${(microUsd / MICRO_PER_USD).toFixed(fractionDigits)}`;
+/** Format a cents amount as a dollar string, e.g. `150` -> `$1.50`. */
+export function formatUsd(cents: number, fractionDigits = 2): string {
+  return `$${(cents / CENTS_PER_USD).toFixed(fractionDigits)}`;
 }
 
 /**
- * Format a signed micro-USD amount with an explicit `+`/`−` sign, e.g. a credit
- * `2_000_000` -> `+$2.00` and a debit `-1_500_000` -> `−$1.50`. Used by the ledger
- * where the direction of each entry matters at a glance.
+ * Format a signed cents amount with an explicit `+`/`−` sign, e.g. a credit
+ * `200` -> `+$2.00` and a debit `-150` -> `−$1.50`. Used by the ledger where the
+ * direction of each entry matters at a glance.
  */
-export function formatSignedUsd(microUsd: number, fractionDigits = 2): string {
-  const sign = microUsd < 0 ? "−" : "+";
-  return `${sign}${formatUsd(Math.abs(microUsd), fractionDigits)}`;
+export function formatSignedUsd(cents: number, fractionDigits = 2): string {
+  const sign = cents < 0 ? "−" : "+";
+  return `${sign}${formatUsd(Math.abs(cents), fractionDigits)}`;
 }
 
 /**
- * Format a per-second price (micro-USD/second, the catalog's price unit) as an
- * hourly rate, e.g. `278` -> `$1.00/hr`. Hourly reads more naturally than the
- * raw per-second micro-price for a by-the-minute product.
+ * Format a catalog price (cents-per-minute, the contract's price unit) as an
+ * hourly rate, e.g. `100` -> `$1.00/hr`. Hourly reads more naturally than the
+ * raw per-minute cents for a by-the-minute product.
  */
-export function formatPricePerHour(microUsdPerSecond: number): string {
-  return `${formatUsd(microUsdPerSecond * SECONDS_PER_HOUR)}/hr`;
+export function formatPricePerHour(centsPerMinute: number): string {
+  return `${formatUsd(centsPerMinute * MINUTES_PER_HOUR)}/hr`;
 }
 
 /**
- * Convert a per-second price (micro-USD/second) to a plain dollars-per-hour
- * number, e.g. `278` -> `1.0008`. Used to seed the host image price editor, which
- * lets hosts think in `$ /hr` rather than the contract's per-second micro-price.
+ * Convert a cents-per-minute price to a plain dollars-per-hour number, e.g.
+ * `100` -> `60`. Used to seed the host image price editor, which lets hosts
+ * think in `$ /hr` rather than the contract's per-minute cents price.
  */
-export function microPerSecondToPerHour(microUsdPerSecond: number): number {
-  return (microUsdPerSecond * SECONDS_PER_HOUR) / MICRO_PER_USD;
+export function centsPerMinToPerHour(centsPerMinute: number): number {
+  return (centsPerMinute * MINUTES_PER_HOUR) / CENTS_PER_USD;
 }
 
 /**
- * Convert a dollars-per-hour rate back to the contract's per-second micro-USD
- * price (rounded to a whole micro-unit), e.g. `1` -> `278`. Inverse of
- * {@link microPerSecondToPerHour}; used when saving edited host image prices.
+ * Convert a dollars-per-hour rate back to the contract's cents-per-minute price
+ * (rounded to a whole cent), e.g. `60` -> `100`. Inverse of
+ * {@link centsPerMinToPerHour}; used when saving edited host image prices.
  */
-export function perHourToMicroPerSecond(dollarsPerHour: number): number {
-  return Math.round((dollarsPerHour * MICRO_PER_USD) / SECONDS_PER_HOUR);
+export function perHourToCentsPerMin(dollarsPerHour: number): number {
+  return Math.round((dollarsPerHour * CENTS_PER_USD) / MINUTES_PER_HOUR);
 }
 
 /** Format a TTL / duration in seconds as a compact `1h 30m` style string. */

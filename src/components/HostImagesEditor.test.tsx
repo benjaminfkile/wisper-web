@@ -20,7 +20,7 @@ const HOST: Host = {
   id: "host-1",
   name: "workstation",
   images: [
-    { id: "img-1", name: "ubuntu-22.04", price_micro_usd_per_second: 278, enabled: true },
+    { host_image_id: "img-1", image_ref: "ubuntu-22.04", price_cents_per_min: 5, enabled: true },
   ],
 };
 
@@ -30,11 +30,11 @@ describe("HostImagesEditor", () => {
   it("seeds rows from the host's images with a $/hr price", () => {
     render(<HostImagesEditor host={HOST} onSaved={() => {}} />);
     expect(screen.getByDisplayValue("ubuntu-22.04")).toBeInTheDocument();
-    // 278 micro-USD/sec ≈ $1.0008/hr, rounded to 4 places by the editor.
-    expect(screen.getByLabelText("price for ubuntu-22.04")).toHaveValue(1.0008);
+    // 5 cents/min -> $3.00/hr.
+    expect(screen.getByLabelText("price for ubuntu-22.04")).toHaveValue(3);
   });
 
-  it("saves the full image list converted back to per-second micro-USD", async () => {
+  it("saves the full image list converted back to cents-per-minute", async () => {
     const user = userEvent.setup();
     updateHostImages.mockResolvedValue({ ...HOST });
     const onSaved = vi.fn();
@@ -42,17 +42,17 @@ describe("HostImagesEditor", () => {
 
     const price = screen.getByLabelText("price for ubuntu-22.04");
     await user.clear(price);
-    await user.type(price, "2");
+    await user.type(price, "6");
     await user.click(screen.getByRole("button", { name: /save changes/i }));
 
     await waitFor(() => expect(updateHostImages).toHaveBeenCalledTimes(1));
     const [id, body] = updateHostImages.mock.calls[0];
     expect(id).toBe("host-1");
     expect(body.images[0]).toMatchObject({
-      id: "img-1",
-      name: "ubuntu-22.04",
+      host_image_id: "img-1",
+      image_ref: "ubuntu-22.04",
       enabled: true,
-      price_micro_usd_per_second: 556, // $2.00/hr
+      price_cents_per_min: 10, // $6.00/hr
     });
     expect(onSaved).toHaveBeenCalled();
     expect(await screen.findByText("Saved")).toBeInTheDocument();

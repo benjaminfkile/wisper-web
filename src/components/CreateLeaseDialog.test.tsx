@@ -21,8 +21,12 @@ import { wisper, WisperError } from "@/lib/wisper/client";
 
 const createLease = wisper.createLease as Mock;
 
-const host: CatalogHost = { id: "h1", name: "Falcon", region: "us-east", images: [] };
-const image: PricedImage = { id: "img1", name: "ubuntu-22.04", price_micro_usd_per_second: 278 };
+const host: CatalogHost = { host_id: "h1", label: "Falcon", region: "us-east", images: [] };
+const image: PricedImage = {
+  host_image_id: "img1",
+  image_ref: "ubuntu-22.04",
+  price_cents_per_min: 5,
+};
 
 function renderDialog(overrides: Partial<React.ComponentProps<typeof CreateLeaseDialog>> = {}) {
   const onCreated = vi.fn();

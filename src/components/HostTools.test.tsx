@@ -28,7 +28,6 @@ vi.mock("@/lib/wisper/client", async (importOriginal) => {
     wisper: {
       ...actual.wisper,
       myHosts: vi.fn(),
-      getEarnings: vi.fn(),
       registerHost: vi.fn(),
       hostConnect: vi.fn(),
       updateHostImages: vi.fn(),
@@ -39,7 +38,6 @@ vi.mock("@/lib/wisper/client", async (importOriginal) => {
 import { wisper } from "@/lib/wisper/client";
 
 const myHosts = wisper.myHosts as Mock;
-const getEarnings = wisper.getEarnings as Mock;
 const registerHost = wisper.registerHost as Mock;
 const hostConnect = wisper.hostConnect as Mock;
 
@@ -48,17 +46,23 @@ const HOSTS: Host[] = [
     id: "host-1",
     name: "workstation",
     region: "us-east",
-    status: "online",
-    images: [{ id: "img-1", name: "ubuntu-22.04", price_micro_usd_per_second: 278, enabled: true }],
+    online: true,
+    images: [
+      { host_image_id: "img-1", image_ref: "ubuntu-22.04", price_cents_per_min: 5, enabled: true },
+    ],
   },
 ];
 
+// GET /v1/hosts/mine's `earnings` block: cents-denominated, live-verified shape.
 const EARNINGS: Earnings = {
-  total_micro_usd: 42_000_000,
-  available_micro_usd: 10_000_000,
   currency: "USD",
-  payouts_enabled: false,
+  accrued_cents: 4200,
+  paid_cents: 1000,
+  can_receive_payouts: false,
 };
+
+/** The real { data, earnings } envelope the client resolves myHosts() to. */
+const MINE = { data: HOSTS, earnings: EARNINGS };
 
 const REGISTERED: RegisterHostResponse = {
   host: { id: "host-2", name: "new-host" },
@@ -69,8 +73,7 @@ const REGISTERED: RegisterHostResponse = {
 beforeEach(() => {
   authState.roles = ["consumer"];
   authState.refresh = vi.fn().mockResolvedValue(undefined);
-  myHosts.mockResolvedValue(HOSTS);
-  getEarnings.mockResolvedValue(EARNINGS);
+  myHosts.mockResolvedValue(MINE);
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -81,7 +84,6 @@ describe("HostTools — role gating (additive)", () => {
     expect(await screen.findByRole("heading", { name: /become a host/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /become a host/i })).toBeInTheDocument();
     expect(myHosts).not.toHaveBeenCalled();
-    expect(getEarnings).not.toHaveBeenCalled();
   });
 
   it("shows full host tools when the account holds the host role", async () => {
@@ -89,8 +91,9 @@ describe("HostTools — role gating (additive)", () => {
     render(<HostTools />);
     expect(await screen.findByRole("heading", { name: /host tools/i })).toBeInTheDocument();
     expect(await screen.findByText("workstation")).toBeInTheDocument();
-    await waitFor(() => expect(getEarnings).toHaveBeenCalled());
-    // Earnings total ($42.00) and its Connect CTA.
+    // Earnings come back on the same GET /v1/hosts/mine call — no separate fetch.
+    await waitFor(() => expect(myHosts).toHaveBeenCalled());
+    // Earnings total ($42.00 accrued) and its Connect CTA.
     expect(screen.getByText("$42.00")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /set up payouts/i })).toBeInTheDocument();
   });
@@ -136,7 +139,10 @@ describe("HostTools — Stripe Connect onboarding", () => {
 
   it("shows payouts-enabled status without an onboarding prompt", async () => {
     authState.roles = ["consumer", "host"];
-    getEarnings.mockResolvedValue({ ...EARNINGS, payouts_enabled: true });
+    myHosts.mockResolvedValue({
+      data: HOSTS,
+      earnings: { ...EARNINGS, can_receive_payouts: true },
+    });
     render(<HostTools />);
     expect(await screen.findByText(/payouts enabled/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /manage payouts/i })).toBeInTheDocument();

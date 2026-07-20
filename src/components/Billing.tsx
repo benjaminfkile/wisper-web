@@ -132,16 +132,14 @@ export default function Billing({ pageSize = 20 }: BillingProps) {
     refresh();
   }
 
-  const usageMetrics: { label: string; value: string }[] = [];
-  if (summary?.spent_micro_usd != null) {
-    usageMetrics.push({ label: "Spent", value: formatUsd(summary.spent_micro_usd) });
-  }
-  if (summary?.topped_up_micro_usd != null) {
-    usageMetrics.push({ label: "Topped up", value: formatUsd(summary.topped_up_micro_usd) });
-  }
-  if (summary?.pending_micro_usd != null) {
-    usageMetrics.push({ label: "Pending", value: formatUsd(summary.pending_micro_usd) });
-  }
+  // The API returns a nested `usage` breakdown whose fields vary by build; surface
+  // any numeric entries as read-only metric tiles without hard-coding names.
+  const usageMetrics: { label: string; value: string }[] = Object.entries(summary?.usage ?? {})
+    .filter(([, v]) => typeof v === "number")
+    .map(([key, v]) => ({
+      label: key.replace(/_cents$/, "").replace(/_/g, " "),
+      value: /_cents$/.test(key) ? formatUsd(v as number) : String(v),
+    }));
 
   return (
     <Stack spacing={3}>
@@ -178,7 +176,7 @@ export default function Billing({ pageSize = 20 }: BillingProps) {
         <Stack direction="row" spacing={2} sx={{ flexWrap: "wrap" }}>
           <Metric
             label={`Wallet balance (${summary.currency})`}
-            value={formatUsd(summary.balance_micro_usd)}
+            value={formatUsd(summary.balance_cents)}
             emphasize
           />
           {usageMetrics.map((m) => (
@@ -217,7 +215,7 @@ export default function Billing({ pageSize = 20 }: BillingProps) {
               </TableHead>
               <TableBody>
                 {txns.map((t) => {
-                  const credit = t.amount_micro_usd >= 0;
+                  const credit = t.amount_cents >= 0;
                   return (
                     <TableRow key={t.id} hover>
                       <TableCell>{formatDateTime(t.created_at)}</TableCell>
@@ -233,7 +231,7 @@ export default function Billing({ pageSize = 20 }: BillingProps) {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {formatSignedUsd(t.amount_micro_usd)}
+                        {formatSignedUsd(t.amount_cents)}
                       </TableCell>
                     </TableRow>
                   );

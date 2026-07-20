@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildAgentRunCommand, connectStatusView } from "./host";
 import type { Earnings } from "@/lib/wisper/types";
 
-const base: Earnings = { total_micro_usd: 0, currency: "USD" };
+const base: Earnings = { currency: "USD", accrued_cents: 0, paid_cents: 0 };
 
 describe("buildAgentRunCommand", () => {
   it("embeds the agent token and manager WebSocket", () => {
@@ -24,12 +24,12 @@ describe("connectStatusView", () => {
     expect(connectStatusView(base).label).toBe("Not set up");
   });
 
-  it("reads payouts_enabled as active/not-started", () => {
-    expect(connectStatusView({ ...base, payouts_enabled: true })).toMatchObject({
+  it("reads can_receive_payouts as active/not-started", () => {
+    expect(connectStatusView({ ...base, can_receive_payouts: true })).toMatchObject({
       active: true,
       color: "success",
     });
-    expect(connectStatusView({ ...base, payouts_enabled: false }).active).toBe(false);
+    expect(connectStatusView({ ...base, can_receive_payouts: false }).active).toBe(false);
   });
 
   it("prefers an explicit connect_status", () => {

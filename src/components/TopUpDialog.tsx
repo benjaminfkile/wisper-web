@@ -19,7 +19,7 @@ import { wisper, WisperError } from "@/lib/wisper/client";
 import { getStripe, isStripeConfigured } from "@/lib/stripe";
 import { formatUsd } from "@/lib/format";
 
-const MICRO_PER_USD = 1_000_000;
+const CENTS_PER_USD = 100;
 /** Preset top-up amounts (USD) offered as quick-select chips-styled buttons. */
 const PRESETS_USD = [10, 25, 50, 100];
 
@@ -36,11 +36,11 @@ interface TopUpDialogProps {
  * the flow in-page for card payments while still supporting redirect methods.
  */
 function PaymentForm({
-  amountMicroUsd,
+  amountCents,
   onSuccess,
   onBack,
 }: {
-  amountMicroUsd: number;
+  amountCents: number;
   onSuccess: () => void;
   onBack: () => void;
 }) {
@@ -81,7 +81,7 @@ function PaymentForm({
     <Box component="form" onSubmit={handleSubmit} id="topup-payment-form">
       <Stack spacing={2}>
         <Typography variant="body2" color="text.secondary">
-          Adding {formatUsd(amountMicroUsd)} to your wallet.
+          Adding {formatUsd(amountCents)} to your wallet.
         </Typography>
         <PaymentElement />
         {error && <Alert severity="error">{error}</Alert>}
@@ -95,7 +95,7 @@ function PaymentForm({
             disabled={!stripe || !elements || submitting}
             startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : undefined}
           >
-            {submitting ? "Processing…" : `Pay ${formatUsd(amountMicroUsd)}`}
+            {submitting ? "Processing…" : `Pay ${formatUsd(amountCents)}`}
           </Button>
         </DialogActions>
       </Stack>
@@ -119,7 +119,7 @@ export default function TopUpDialog({ open, onClose, onSuccess }: TopUpDialogPro
 
   const dollars = Number(amount);
   const amountValid = Number.isFinite(dollars) && dollars > 0;
-  const amountMicroUsd = Math.round(dollars * MICRO_PER_USD);
+  const amountCents = Math.round(dollars * CENTS_PER_USD);
 
   function reset() {
     setClientSecret(null);
@@ -137,7 +137,7 @@ export default function TopUpDialog({ open, onClose, onSuccess }: TopUpDialogPro
     setCreating(true);
     setError(null);
     try {
-      const { client_secret } = await wisper.topup({ amount_micro_usd: amountMicroUsd });
+      const { client_secret } = await wisper.topup({ amount_cents: amountCents });
       setClientSecret(client_secret);
     } catch (err) {
       setError(err instanceof WisperError ? err.message : "Could not start the top-up.");
@@ -167,7 +167,7 @@ export default function TopUpDialog({ open, onClose, onSuccess }: TopUpDialogPro
         ) : clientSecret && elementsOptions ? (
           <Elements stripe={stripePromise} options={elementsOptions}>
             <PaymentForm
-              amountMicroUsd={amountMicroUsd}
+              amountCents={amountCents}
               onSuccess={handleSuccess}
               onBack={reset}
             />
@@ -185,7 +185,7 @@ export default function TopUpDialog({ open, onClose, onSuccess }: TopUpDialogPro
                   variant={dollars === preset ? "contained" : "outlined"}
                   onClick={() => setAmount(String(preset))}
                 >
-                  {formatUsd(preset * MICRO_PER_USD, 0)}
+                  {formatUsd(preset * CENTS_PER_USD, 0)}
                 </Button>
               ))}
             </Stack>

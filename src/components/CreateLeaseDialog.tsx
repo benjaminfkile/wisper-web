@@ -92,7 +92,7 @@ export default function CreateLeaseDialog({
     return Number.isFinite(n) && n > 0 ? Math.floor(n) * ttlUnit : 0;
   }, [ttlValue, ttlUnit]);
 
-  const price = image?.price_micro_usd_per_second;
+  const price = image?.price_cents_per_min;
   const osHint = userdataHint(host?.os);
 
   async function handleSubmit() {
@@ -109,8 +109,8 @@ export default function CreateLeaseDialog({
     if (diskVal !== undefined) resources.disk_mb = diskVal;
 
     const body: CreateLeaseRequest = {
-      host_id: host.id,
-      host_image_id: image.id,
+      host_id: host.host_id,
+      host_image_id: image.host_image_id,
       network,
       ttl_seconds: ttlSeconds,
     };
@@ -142,9 +142,9 @@ export default function CreateLeaseDialog({
         {host && image ? (
           <Stack spacing={2.5} sx={{ pt: 0.5 }}>
             <Box>
-              <Typography variant="subtitle1">{image.name}</Typography>
+              <Typography variant="subtitle1">{image.image_ref}</Typography>
               <Typography variant="body2" color="text.secondary">
-                on {host.name}
+                on {host.label}
                 {host.region ? ` · ${host.region}` : ""}
                 {price != null ? ` · ${formatPricePerHour(price)}` : ""}
               </Typography>

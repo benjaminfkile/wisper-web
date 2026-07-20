@@ -99,15 +99,18 @@ function EarningsPanel({
           </Box>
         ) : earnings != null ? (
           <Stack direction="row" spacing={2} sx={{ flexWrap: "wrap" }}>
-            <Metric label={`Total earned (${earnings.currency})`} value={formatUsd(earnings.total_micro_usd)} emphasize />
-            {earnings.available_micro_usd != null && (
-              <Metric label="Available" value={formatUsd(earnings.available_micro_usd)} />
-            )}
-            {earnings.pending_micro_usd != null && (
-              <Metric label="Pending" value={formatUsd(earnings.pending_micro_usd)} />
-            )}
-            {earnings.paid_out_micro_usd != null && (
-              <Metric label="Paid out" value={formatUsd(earnings.paid_out_micro_usd)} />
+            <Metric
+              label={`Total earned (${earnings.currency})`}
+              value={formatUsd(earnings.accrued_cents)}
+              emphasize
+            />
+            <Metric
+              label="Available"
+              value={formatUsd(Math.max(0, earnings.accrued_cents - earnings.paid_cents))}
+            />
+            <Metric label="Paid out" value={formatUsd(earnings.paid_cents)} />
+            {earnings.payout_min_cents != null && (
+              <Metric label="Payout minimum" value={formatUsd(earnings.payout_min_cents)} />
             )}
           </Stack>
         ) : null}
@@ -191,18 +194,16 @@ export default function HostTools() {
     if (!isHost) return;
     setLoading(true);
     try {
-      const list = await wisper.myHosts();
-      setHosts(list);
+      // GET /v1/hosts/mine returns { data, earnings } — one call yields both the
+      // owned hosts and the earnings/payout summary the panel renders for free.
+      const { data, earnings: earned } = await wisper.myHosts();
+      setHosts(data);
+      setEarnings(earned ?? null);
       setHostsError(null);
+      setEarningsError(null);
     } catch (err) {
       setHosts([]);
       setHostsError(err instanceof WisperError ? err.message : "Failed to load hosts.");
-    }
-    try {
-      setEarnings(await wisper.getEarnings());
-      setEarningsError(null);
-    } catch (err) {
-      setEarningsError(err instanceof WisperError ? err.message : "Failed to load earnings.");
     } finally {
       setLoading(false);
     }

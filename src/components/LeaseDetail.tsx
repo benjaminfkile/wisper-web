@@ -26,9 +26,9 @@ import { osLabel } from "@/lib/os";
 import { isTerminalLease, leaseStatusColor } from "@/lib/leaseStatus";
 import {
   baseTtlRemainingSeconds,
-  costRateMicroUsdPerSecond,
+  costRateCentsPerSecond,
   leaseUptimeSeconds,
-  liveCostMicroUsd,
+  liveCostCents,
   liveTtlRemainingSeconds,
 } from "@/lib/leaseTiming";
 import type { Lease } from "@/lib/wisper/types";
@@ -46,7 +46,7 @@ interface Sync {
   syncedAtMs: number;
   /** Server TTL remaining at sync time, counted down live from here. */
   baseRemaining: number;
-  /** Accrued cost at sync time, in micro-USD. */
+  /** Accrued cost at sync time, in cents. */
   baseCost: number;
   /** Per-second cost rate used to tick the running total between polls. */
   rate: number;
@@ -57,8 +57,8 @@ function toSync(lease: Lease, nowMs: number): Sync {
     lease,
     syncedAtMs: nowMs,
     baseRemaining: baseTtlRemainingSeconds(lease, nowMs),
-    baseCost: lease.cost_micro_usd ?? 0,
-    rate: costRateMicroUsdPerSecond(lease, nowMs),
+    baseCost: lease.cost_cents ?? 0,
+    rate: costRateCentsPerSecond(lease, nowMs),
   };
 }
 
@@ -173,7 +173,7 @@ export default function LeaseDetail({ leaseId, pollMs = 5000 }: LeaseDetailProps
       : liveTtlRemainingSeconds(sync.baseRemaining, sync.syncedAtMs, nowMs)
     : 0;
   const elapsedSinceSync = sync ? Math.floor((nowMs - sync.syncedAtMs) / 1000) : 0;
-  const cost = sync ? liveCostMicroUsd(sync.baseCost, terminal ? 0 : sync.rate, elapsedSinceSync) : 0;
+  const cost = sync ? liveCostCents(sync.baseCost, terminal ? 0 : sync.rate, elapsedSinceSync) : 0;
 
   return (
     <Stack spacing={3}>

@@ -160,7 +160,7 @@ export default function LeaseList({ pollMs = 5000 }: LeaseListProps) {
                     <TableCell>{formatDuration(lease.ttl_seconds)}</TableCell>
                     <TableCell>{formatDateTime(lease.created_at)}</TableCell>
                     <TableCell align="right">
-                      {lease.cost_micro_usd != null ? formatUsd(lease.cost_micro_usd) : "—"}
+                      {lease.cost_cents != null ? formatUsd(lease.cost_cents) : "—"}
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}>

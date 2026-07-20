@@ -34,8 +34,8 @@ function lease(overrides: Partial<Lease> = {}): Lease {
     ttl_seconds_remaining: 3540,
     created_at: "2026-07-12T00:00:00.000Z",
     started_at: "2026-07-12T00:00:00.000Z",
-    cost_micro_usd: 1_000_000,
-    price_micro_usd_per_second: 278,
+    cost_cents: 100,
+    price_cents_per_min: 6,
     ...overrides,
   };
 }
