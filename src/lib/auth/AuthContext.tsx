@@ -14,6 +14,7 @@ import { setAuthToken, wisper } from "@/lib/wisper/client";
 import type { Me, Role } from "@/lib/wisper/types";
 import * as cognito from "./cognito";
 import { type SignUpResult } from "./cognito";
+import * as apiKey from "./apiKey";
 
 /** Where the provider is in restoring / establishing a session. */
 export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
@@ -27,6 +28,12 @@ export interface AuthContextValue {
   /** Convenience: does the account hold the given role? */
   hasRole: (role: Role) => boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  /**
+   * Sign in with a wisper-api API key (local-dev fallback when Cognito is not
+   * configured). Holds the key, attaches it as the bearer token, and validates
+   * it via GET /v1/me — clearing the held key if the backend rejects it.
+   */
+  signInWithApiKey: (key: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<SignUpResult>;
   confirmSignUp: (email: string, code: string) => Promise<void>;
   resendConfirmationCode: (email: string) => Promise<void>;
@@ -38,9 +45,11 @@ export interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
- * Holds the Cognito JWT + hydrated account. On mount it restores any existing
- * Cognito session, sets the API bearer token, and calls GET /v1/me to hydrate
- * the user and their roles. Sign-in/out keep the token and `/v1/me` in sync.
+ * Holds the bearer token (Cognito JWT or, for local dev, a pasted wisper-api API
+ * key) + hydrated account. On mount it restores an existing Cognito session, or
+ * falls back to a stored API key when Cognito is not configured, sets the API
+ * bearer token, and calls GET /v1/me to hydrate the user and their roles.
+ * Sign-in/out keep the token and `/v1/me` in sync.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
@@ -79,7 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("unauthenticated");
   }, []);
 
-  // Restore an existing Cognito session on first load.
+  // Restore a session on first load: a Cognito session wins; otherwise fall back
+  // to a stored API key (the local-dev path for Cognito-less environments).
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -90,6 +100,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await establish(jwt);
         } catch {
           // establish() already reset to unauthenticated.
+        }
+        return;
+      }
+      const key = apiKey.getStoredApiKey();
+      if (key) {
+        try {
+          await establish(key);
+        } catch {
+          // Stored key is invalid/revoked: drop it so we don't retry it forever.
+          apiKey.clearStoredApiKey();
         }
       } else {
         setStatus("unauthenticated");
@@ -108,8 +128,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [establish],
   );
 
+  const signInWithApiKey = useCallback(
+    async (key: string) => {
+      apiKey.storeApiKey(key);
+      try {
+        await establish(key);
+      } catch (err) {
+        // Backend rejected the key (e.g. 401 bad/revoked): don't keep it around.
+        apiKey.clearStoredApiKey();
+        throw err;
+      }
+    },
+    [establish],
+  );
+
   const signOut = useCallback(() => {
     cognito.signOut();
+    apiKey.clearStoredApiKey();
     clear();
   }, [clear]);
 
@@ -130,13 +165,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       hasRole,
       signIn,
+      signInWithApiKey,
       signUp: cognito.signUp,
       confirmSignUp: cognito.confirmSignUp,
       resendConfirmationCode: cognito.resendConfirmationCode,
       signOut,
       refresh,
     }),
-    [status, user, token, hasRole, signIn, signOut, refresh],
+    [status, user, token, hasRole, signIn, signInWithApiKey, signOut, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

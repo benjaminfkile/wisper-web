@@ -20,6 +20,26 @@ cp .env.example .env.local
 # set WISPER_API_URL=https://<your-wisper-host>   (defaults to http://localhost:8080)
 ```
 
+## Local development against wisper-api
+
+To run the app fully against a **local wisper-api with no Cognito configured**, leave
+the `NEXT_PUBLIC_COGNITO_*` variables unset and point the proxy at your local API:
+
+```sh
+# .env.local
+WISPER_API_URL=http://127.0.0.1:8090
+# (no NEXT_PUBLIC_COGNITO_* vars)
+```
+
+With Cognito unconfigured, the login page offers **"Sign in with API key"** instead of
+email/password. Paste a consumer API key (`wck_live_<64-hex>`) that the operator defined
+in wisper-api's `Auth:ApiKeys` configuration (see the wisper-api README, "Local
+development against wisper-api"). The key is held in `localStorage`, sent as
+`Authorization: Bearer <key>` exactly like a Cognito JWT, and validated by the backend via
+`GET /v1/me` — the account's scopes (consumer/host/admin) drive the role-aware UI. A
+bad/revoked key is rejected with 401 and cleared. When Cognito **is** configured it always
+takes precedence; the API-key path is the fallback for Cognito-less environments only.
+
 ## Develop
 
 ```sh

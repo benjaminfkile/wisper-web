@@ -16,6 +16,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { isAuthConfigured } from "@/lib/auth/cognito";
+import { WisperError } from "@/lib/wisper/client";
 
 type Mode = "signin" | "signup";
 
@@ -24,13 +25,24 @@ function errorMessage(err: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
+/** Message for a failed API-key sign-in — a 401 means the key is bad/revoked. */
+function apiKeyErrorMessage(err: unknown): string {
+  if (err instanceof WisperError && err.status === 401) {
+    return "Invalid or revoked API key.";
+  }
+  return errorMessage(err);
+}
+
 export default function LoginPage() {
-  const { status, signIn, signUp, confirmSignUp, resendConfirmationCode } = useAuth();
+  const { status, signIn, signInWithApiKey, signUp, confirmSignUp, resendConfirmationCode } =
+    useAuth();
   const router = useRouter();
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Local-dev fallback: a pasted wisper-api API key when Cognito is unconfigured.
+  const [apiKey, setApiKey] = useState("");
   // Present once a sign-up needs email confirmation.
   const [needsConfirm, setNeedsConfirm] = useState(false);
   const [code, setCode] = useState("");
@@ -62,6 +74,21 @@ export default function LoginPage() {
       router.replace("/");
     } catch (err) {
       setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onApiKeySignIn = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await signInWithApiKey(apiKey);
+      router.replace("/");
+    } catch (err) {
+      // signInWithApiKey already cleared the held key on failure.
+      setError(apiKeyErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -131,35 +158,59 @@ export default function LoginPage() {
           Rent ephemeral, root-access containers by the minute — or host your own.
         </Typography>
 
-        {!configured && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            Authentication is not configured. Set the <code>NEXT_PUBLIC_COGNITO_*</code> environment
-            variables to enable sign-in.
-          </Alert>
-        )}
+        {!configured ? (
+          <Box component="form" onSubmit={onApiKeySignIn}>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Cognito isn&apos;t configured, so sign in with a wisper-api API key. Paste a key defined
+              in the operator&apos;s <code>Auth:ApiKeys</code> configuration — see the wisper-api
+              README, &ldquo;Local development against wisper-api&rdquo;.
+            </Alert>
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+            )}
+            <Stack spacing={2}>
+              <TextField
+                label="API key"
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                required
+                autoFocus
+                fullWidth
+                placeholder="wck_live_…"
+                autoComplete="off"
+              />
+              <Button type="submit" variant="contained" disabled={busy} fullWidth>
+                {busy ? "Signing in…" : "Sign in with API key"}
+              </Button>
+            </Stack>
+          </Box>
+        ) : (
+          <>
+            <Tabs
+              value={mode}
+              onChange={(_, v: Mode) => switchMode(v)}
+              variant="fullWidth"
+              sx={{ mb: 3 }}
+            >
+              <Tab value="signin" label="Sign in" />
+              <Tab value="signup" label="Sign up" />
+            </Tabs>
 
-        <Tabs
-          value={mode}
-          onChange={(_, v: Mode) => switchMode(v)}
-          variant="fullWidth"
-          sx={{ mb: 3 }}
-        >
-          <Tab value="signin" label="Sign in" />
-          <Tab value="signup" label="Sign up" />
-        </Tabs>
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+            )}
+            {info && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                {info}
+              </Alert>
+            )}
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
-        {info && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            {info}
-          </Alert>
-        )}
-
-        {needsConfirm ? (
+            {needsConfirm ? (
           <Box component="form" onSubmit={onConfirm}>
             <Stack spacing={2}>
               <TextField
@@ -211,6 +262,8 @@ export default function LoginPage() {
               </Button>
             </Stack>
           </Box>
+            )}
+          </>
         )}
       </Paper>
     </Container>
