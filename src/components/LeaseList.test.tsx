@@ -32,7 +32,7 @@ const LEASES: Lease[] = [
     network: "egress",
     ttl_seconds: 3600,
     created_at: "2026-07-12T00:00:00.000Z",
-    cost_micro_usd: 1_500_000,
+    cost_cents: 150,
   },
   {
     id: "l2",

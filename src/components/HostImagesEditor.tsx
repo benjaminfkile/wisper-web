@@ -20,7 +20,7 @@ import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { wisper, WisperError } from "@/lib/wisper/client";
-import { microPerSecondToPerHour, perHourToMicroPerSecond } from "@/lib/format";
+import { centsPerMinToPerHour, perHourToCentsPerMin } from "@/lib/format";
 import type { Host, HostImage } from "@/lib/wisper/types";
 
 interface HostImagesEditorProps {
@@ -44,12 +44,12 @@ let syntheticId = 0;
 
 function toRow(image: HostImage): Row {
   return {
-    key: image.id,
-    id: image.id,
-    name: image.name,
+    key: image.host_image_id ?? image.image_ref,
+    id: image.host_image_id ?? "",
+    name: image.image_ref,
     pricePerHour:
-      image.price_micro_usd_per_second != null
-        ? String(Number(microPerSecondToPerHour(image.price_micro_usd_per_second).toFixed(4)))
+      image.price_cents_per_min != null
+        ? String(Number(centsPerMinToPerHour(image.price_cents_per_min).toFixed(4)))
         : "",
     enabled: image.enabled ?? true,
   };
@@ -109,9 +109,10 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
     setSaving(true);
     setError(null);
     const images: HostImage[] = rows.map((r) => {
-      const image: HostImage = { id: r.id, name: r.name.trim(), enabled: r.enabled };
+      const image: HostImage = { image_ref: r.name.trim(), enabled: r.enabled };
+      if (r.id) image.host_image_id = r.id;
       const priceStr = r.pricePerHour.trim();
-      if (priceStr) image.price_micro_usd_per_second = perHourToMicroPerSecond(Number(priceStr));
+      if (priceStr) image.price_cents_per_min = perHourToCentsPerMin(Number(priceStr));
       return image;
     });
     try {

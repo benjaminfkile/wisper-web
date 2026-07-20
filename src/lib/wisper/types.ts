@@ -1,6 +1,20 @@
-// TypeScript types mirroring the Wisper /v1 API contract. The wisper-api docs
-// live in a separate repo, so the shapes here are the contract this app builds
-// against; they are expanded as endpoints are wired up in later milestones.
+// ============================================================================
+// CONTRACT
+// These types mirror the wisper-api /v1 contract as documented in wisper-api's
+// `docs/API.md`, and were LIVE-VERIFIED against a running wisper-api on
+// 2026-07-20 (the first time this app ran against the real API, via API-key
+// sign-in). Money is denominated in whole CENTS everywhere the API uses it
+// (`*_cents`, `price_cents_per_min`), matching the real contract — NOT the
+// micro-USD unit the app originally guessed.
+//
+// List endpoints return a `{ data, next_cursor }` (or `{ data, next_offset }`)
+// envelope, never a bare array; `GET /v1/hosts/mine` additionally carries an
+// `earnings` block alongside `data`. The client (client.ts) parses these
+// TOLERANTLY — it accepts the documented envelope, legacy field names, and a
+// bare array — so components receive clean typed arrays/objects and never crash
+// on shape drift again. If you change a shape here, update client.ts's
+// normalizers and the tests that pin them, and keep this paper trail current.
+// ============================================================================
 
 /** Liveness (GET /healthz). */
 export interface HealthResponse {
@@ -52,30 +66,49 @@ export type WispNetwork = "none" | "open" | "egress";
  */
 export type HostOs = "linux" | "windows";
 
-/** A host image offered in the catalog, with its price. */
+/**
+ * A priced image offered by a catalog host (item of `GET /v1/catalog`'s `data`).
+ * Prices are in CENTS PER MINUTE. `image_ref` is the pullable image reference
+ * (also the display name), `host_image_id` the id a lease is created against.
+ */
 export interface PricedImage {
-  id: string;
-  name: string;
-  description?: string;
-  /** Price in micro-USD per second (contract unit); rendered by billing UI. */
-  price_micro_usd_per_second?: number;
-  enabled?: boolean;
+  host_image_id: string;
+  image_ref: string;
+  /** Price in whole cents per minute of runtime. */
+  price_cents_per_min: number;
+  currency?: string;
+  /** Network modes this image supports. */
+  networks?: WispNetwork[];
+  max_ttl_seconds?: number;
+  max_cpus?: number;
+  max_memory_mb?: number;
+  max_pids?: number;
 }
 
-/** A host advertising capacity + priced images (GET /v1/catalog). */
+/**
+ * A catalog host advertising priced images (item of `GET /v1/catalog`'s `data`).
+ * Identified by `host_id`; `label` is the human name; `online` is its liveness.
+ */
 export interface CatalogHost {
-  id: string;
-  name: string;
+  host_id: string;
+  label: string;
   region?: string;
-  status?: string;
+  /** Whether the host is currently connected/available for new leases. */
+  online?: boolean;
   /** OS the host's containers run, when advertised (older API omits it). */
   os?: HostOs;
   images: PricedImage[];
 }
 
-/** Catalog of hosts and their priced images (GET /v1/catalog). */
+/**
+ * The catalog page (`GET /v1/catalog`): `{ data, next_cursor }`. The cursor is
+ * threaded through the type so pagination can be added later without changing
+ * the shape; the current UI renders the whole first page.
+ */
 export interface Catalog {
-  hosts: CatalogHost[];
+  data: CatalogHost[];
+  /** Opaque cursor for the next page, absent on the last page. */
+  next_cursor?: string;
 }
 
 /** Requested compute for a lease. */
@@ -116,13 +149,22 @@ export interface Lease {
   started_at?: string;
   expires_at?: string;
   ended_at?: string;
-  /** Accrued cost so far, in micro-USD. */
-  cost_micro_usd?: number;
+  /** Accrued cost so far, in cents. */
+  cost_cents?: number;
   /**
-   * Effective per-second price for this lease, in micro-USD/second. When present
-   * the detail view uses it to tick running cost forward between polls.
+   * Effective price for this lease, in cents per minute. When present the detail
+   * view uses it to tick running cost forward between polls.
    */
-  price_micro_usd_per_second?: number;
+  price_cents_per_min?: number;
+}
+
+/**
+ * The leases page (`GET /v1/leases`): `{ data, next_cursor }`. Cursor threaded
+ * through the type for future pagination; the client normalizes to a `Lease[]`.
+ */
+export interface LeasePage {
+  data: Lease[];
+  next_cursor?: string;
 }
 
 /** Body for POST /v1/leases/:id/exec. */
@@ -146,22 +188,21 @@ export interface ShellTicket {
 
 /** Wallet balance + usage summary (GET /v1/billing). */
 export interface Billing {
-  /** Current balance in micro-USD. */
-  balance_micro_usd: number;
+  /** Current balance in cents. */
+  balance_cents: number;
   currency: string;
-  /** Optional lifetime spend on leases, in micro-USD. */
-  spent_micro_usd?: number;
-  /** Optional lifetime top-ups, in micro-USD. */
-  topped_up_micro_usd?: number;
-  /** Optional funds held for in-flight leases, in micro-USD. */
-  pending_micro_usd?: number;
+  /**
+   * Usage/rollup breakdown. The API returns a nested object here whose exact
+   * fields vary by build; tolerated as an opaque map so the wallet still renders.
+   */
+  usage?: Record<string, unknown>;
 }
 
-/** A billing ledger entry (GET /v1/billing/transactions). */
+/** A billing ledger entry (item of `GET /v1/billing/transactions`'s `data`). */
 export interface Transaction {
   id: string;
-  /** Signed amount in micro-USD (credit positive, debit negative). */
-  amount_micro_usd: number;
+  /** Signed amount in cents (credit positive, debit negative). */
+  amount_cents: number;
   type: string;
   description?: string;
   created_at: string;
@@ -176,8 +217,10 @@ export interface TransactionsQuery {
 }
 
 /**
- * A page of ledger entries. The API may return either a bare array or this
- * envelope; the client normalizes both to this shape (see `getTransactions`).
+ * A page of ledger entries. The raw endpoint returns a `{ data, next_cursor }`
+ * envelope (or, tolerantly, a bare array / legacy `{ transactions }`); the
+ * client normalizes all of them to this component-facing shape (see
+ * `getTransactions`).
  */
 export interface TransactionPage {
   transactions: Transaction[];
@@ -187,8 +230,8 @@ export interface TransactionPage {
 
 /** Body for POST /v1/billing/topup. */
 export interface TopupRequest {
-  /** Amount to add in micro-USD. */
-  amount_micro_usd: number;
+  /** Amount to add in cents. */
+  amount_cents: number;
 }
 
 /** Stripe PaymentIntent client secret for a top-up (POST /v1/billing/topup). */
@@ -196,26 +239,56 @@ export interface TopupResponse {
   client_secret: string;
 }
 
-/** A host image with pricing (host-side view). */
+/**
+ * A host image with pricing (host-side view, PUT /v1/hosts/:id/images). Prices
+ * are in CENTS PER MINUTE, matching the catalog's `price_cents_per_min`.
+ */
 export interface HostImage {
-  id: string;
-  name: string;
-  price_micro_usd_per_second?: number;
+  host_image_id?: string;
+  image_ref: string;
+  price_cents_per_min?: number;
   enabled?: boolean;
 }
 
-/** A host owned by the signed-in account (GET /v1/hosts/mine). */
+/**
+ * A host owned by the signed-in account (item of `GET /v1/hosts/mine`'s `data`).
+ * Note the real shape carries no `images`; the priced-image editor keeps it
+ * optional and tolerates its absence.
+ */
 export interface Host {
   id: string;
   name: string;
-  region?: string;
+  /** Human label, when distinct from `name`. */
+  label?: string;
   status?: string;
-  /** OS the host's containers run, when advertised (GET /v1/hosts/:id). */
-  os?: HostOs;
-  images?: HostImage[];
+  /** Whether the host agent is currently connected. */
+  online?: boolean;
+  wisp_version?: string;
+  agent_version?: string;
+  max_leases?: number;
+  max_streams?: number;
+  /** Non-secret leading portion of the host's agent token. */
+  agent_token_prefix?: string;
+  last_seen_at?: string;
   created_at?: string;
+  /** OS the host's containers run, when advertised. */
+  os?: HostOs;
+  /** Host-side priced images, when the build exposes them (optional). */
+  images?: HostImage[];
+  region?: string;
   /** The manager WebSocket the host agent connects back to. */
   manager_ws?: string;
+}
+
+/**
+ * `GET /v1/hosts/mine`: `{ data, earnings }`. The account's hosts plus the
+ * earnings/payout summary the endpoint returns for free (no separate call).
+ */
+export interface MyHosts {
+  data: Host[];
+  earnings?: Earnings;
+  /** Present if the endpoint ever paginates; unused by the current UI. */
+  next_cursor?: string;
 }
 
 /** Body for POST /v1/hosts (register a host). */
@@ -255,9 +328,10 @@ export interface ConnectResponse {
 export type ApiKeyScope = "consumer" | "host" | "admin";
 
 /**
- * A machine API key (GET /v1/me/api-keys). The full secret (`wck_live_<64-hex>`)
- * is only ever returned once at creation; the list carries just the non-secret
- * `token_prefix` and metadata. Revoked keys stay listed with `revoked_at` set.
+ * A machine API key (item of `GET /v1/me/api-keys`'s `data`). The full secret
+ * (`wck_live_<64-hex>`) is only ever returned once at creation; the list carries
+ * just the non-secret `token_prefix` and metadata. Revoked keys stay listed with
+ * `revoked_at` set.
  */
 export interface ApiKey {
   id: string;
@@ -292,19 +366,23 @@ export interface CreateApiKeyResponse {
 /** Stripe Connect account state for the host, surfaced with earnings. */
 export type ConnectStatus = "not_started" | "pending" | "active" | "restricted";
 
-/** Host earnings summary (GET /v1/earnings). */
+/**
+ * Host earnings + payout summary. Returned as the `earnings` block of
+ * `GET /v1/hosts/mine`. All money is in cents. `accrued_cents` is lifetime
+ * earned, `paid_cents` is lifetime paid out, `payout_min_cents` is the minimum
+ * balance before a payout runs, and `can_receive_payouts` reflects whether
+ * Stripe Connect is set up enough to pay out.
+ */
 export interface Earnings {
-  /** Total earned, in micro-USD. */
-  total_micro_usd: number;
-  /** Amount available for payout, in micro-USD. */
-  available_micro_usd?: number;
-  /** Earned but not yet available for payout, in micro-USD. */
-  pending_micro_usd?: number;
-  /** Lifetime amount already paid out, in micro-USD. */
-  paid_out_micro_usd?: number;
   currency: string;
-  /** Whether Stripe Connect payouts are enabled for this account. */
-  payouts_enabled?: boolean;
+  /** Lifetime earned, in cents. */
+  accrued_cents: number;
+  /** Lifetime paid out, in cents. */
+  paid_cents: number;
+  /** Minimum balance (cents) before a payout is issued. */
+  payout_min_cents?: number;
   /** Coarse Stripe Connect onboarding state, when reported. */
   connect_status?: ConnectStatus;
+  /** Whether payouts can currently be received (Connect onboarded). */
+  can_receive_payouts?: boolean;
 }

@@ -23,24 +23,24 @@ import { wisper } from "@/lib/wisper/client";
 const getCatalog = wisper.getCatalog as Mock;
 
 const CATALOG: Catalog = {
-  hosts: [
+  data: [
     {
-      id: "h1",
-      name: "Falcon",
+      host_id: "h1",
+      label: "Falcon",
       region: "us-east",
-      status: "online",
+      online: true,
       os: "linux",
       images: [
-        { id: "img1", name: "ubuntu-22.04", price_micro_usd_per_second: 1_000_000 / 3600 },
-        { id: "img2", name: "gpu-cuda", price_micro_usd_per_second: 2_000_000 / 3600 },
+        { host_image_id: "img1", image_ref: "ubuntu-22.04", price_cents_per_min: 5 },
+        { host_image_id: "img2", image_ref: "gpu-cuda", price_cents_per_min: 10 },
       ],
     },
     {
-      id: "h2",
-      name: "Condor",
+      host_id: "h2",
+      label: "Condor",
       region: "eu-west",
-      status: "online",
-      images: [{ id: "img3", name: "debian-12", price_micro_usd_per_second: 500_000 / 3600 }],
+      online: true,
+      images: [{ host_image_id: "img3", image_ref: "debian-12", price_cents_per_min: 2 }],
     },
   ],
 };
@@ -58,9 +58,9 @@ describe("CatalogBrowser", () => {
     expect(screen.getByText("Condor")).toBeInTheDocument();
     expect(screen.getByText("ubuntu-22.04")).toBeInTheDocument();
     expect(screen.getByText("gpu-cuda")).toBeInTheDocument();
-    // Hourly price rendering from the per-second unit.
-    expect(screen.getByText("$1.00/hr")).toBeInTheDocument();
-    expect(screen.getByText("$2.00/hr")).toBeInTheDocument();
+    // Hourly price rendering from the cents-per-minute unit (5c/min -> $3.00/hr).
+    expect(screen.getByText("$3.00/hr")).toBeInTheDocument();
+    expect(screen.getByText("$6.00/hr")).toBeInTheDocument();
   });
 
   it("filters by image name via the search box", async () => {
@@ -108,14 +108,14 @@ describe("CatalogBrowser", () => {
 
   it("labels a Windows host with a Windows chip", async () => {
     getCatalog.mockResolvedValue({
-      hosts: [
+      data: [
         {
-          id: "hw",
-          name: "Kestrel",
+          host_id: "hw",
+          label: "Kestrel",
           region: "us-west",
-          status: "online",
+          online: true,
           os: "windows",
-          images: [{ id: "w1", name: "windows-2022", price_micro_usd_per_second: 300 }],
+          images: [{ host_image_id: "w1", image_ref: "windows-2022", price_cents_per_min: 5 }],
         },
       ],
     });

@@ -25,11 +25,6 @@ import type { CatalogHost, Lease, PricedImage } from "@/lib/wisper/types";
 
 const ALL_REGIONS = "__all__";
 
-/** An image is offered when it isn't explicitly disabled. */
-function isOffered(image: PricedImage): boolean {
-  return image.enabled !== false;
-}
-
 /**
  * Browse GET /v1/catalog: one card per host, each listing its priced images with
  * an hourly rate and a Lease button. A search box (host or image name) and a
@@ -55,7 +50,7 @@ export default function CatalogBrowser() {
       .getCatalog()
       .then((catalog) => {
         if (!active) return;
-        setHosts(catalog.hosts ?? []);
+        setHosts(catalog.data ?? []);
       })
       .catch((err) => {
         if (!active) return;
@@ -80,12 +75,12 @@ export default function CatalogBrowser() {
     return (hosts ?? [])
       .filter((h) => region === ALL_REGIONS || h.region === region)
       .map((h) => {
-        const images = h.images.filter(isOffered);
+        const images = h.images ?? [];
         if (!q) return { host: h, images };
-        const hostMatch = h.name.toLowerCase().includes(q);
+        const hostMatch = h.label.toLowerCase().includes(q);
         const matchedImages = hostMatch
           ? images
-          : images.filter((img) => img.name.toLowerCase().includes(q));
+          : images.filter((img) => img.image_ref.toLowerCase().includes(q));
         return { host: h, images: matchedImages };
       })
       .filter((entry) => entry.images.length > 0);
@@ -166,13 +161,13 @@ export default function CatalogBrowser() {
           }}
         >
           {filtered.map(({ host, images }) => (
-            <Card key={host.id} variant="outlined">
+            <Card key={host.host_id} variant="outlined">
               <CardContent>
                 <Box
                   sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}
                 >
                   <Typography variant="h6" sx={{ flexGrow: 1 }} noWrap>
-                    {host.name}
+                    {host.label}
                   </Typography>
                   {host.os ? (
                     <Chip
@@ -182,11 +177,11 @@ export default function CatalogBrowser() {
                       aria-label={`operating system ${osLabel(host.os)}`}
                     />
                   ) : null}
-                  {host.status ? (
+                  {host.online != null ? (
                     <Chip
                       size="small"
-                      label={host.status}
-                      color={host.status === "online" ? "success" : "default"}
+                      label={host.online ? "online" : "offline"}
+                      color={host.online ? "success" : "default"}
                       variant="outlined"
                     />
                   ) : null}
@@ -199,24 +194,15 @@ export default function CatalogBrowser() {
                 <Divider sx={{ my: 1.5 }} />
                 <Stack spacing={1.5}>
                   {images.map((image) => (
-                    <Box key={image.id}>
+                    <Box key={image.host_image_id}>
                       <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
                         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                           <Typography variant="subtitle2" noWrap>
-                            {image.name}
+                            {image.image_ref}
                           </Typography>
-                          {image.description && (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{ display: "block" }}
-                            >
-                              {image.description}
-                            </Typography>
-                          )}
                           <Typography variant="body2" color="primary.main">
-                            {image.price_micro_usd_per_second != null
-                              ? formatPricePerHour(image.price_micro_usd_per_second)
+                            {image.price_cents_per_min != null
+                              ? formatPricePerHour(image.price_cents_per_min)
                               : "Price on request"}
                           </Typography>
                         </Box>

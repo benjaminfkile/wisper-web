@@ -1,41 +1,41 @@
 import { describe, expect, it } from "vitest";
 import {
+  centsPerMinToPerHour,
   formatDateTime,
   formatDuration,
   formatHms,
   formatPricePerHour,
   formatSignedUsd,
   formatUsd,
-  microPerSecondToPerHour,
-  perHourToMicroPerSecond,
+  perHourToCentsPerMin,
 } from "./format";
 
 describe("format helpers", () => {
-  it("formatUsd converts micro-USD to a dollar string", () => {
-    expect(formatUsd(1_500_000)).toBe("$1.50");
+  it("formatUsd converts cents to a dollar string", () => {
+    expect(formatUsd(150)).toBe("$1.50");
     expect(formatUsd(0)).toBe("$0.00");
-    expect(formatUsd(250_000)).toBe("$0.25");
+    expect(formatUsd(25)).toBe("$0.25");
   });
 
   it("formatSignedUsd prefixes an explicit credit/debit sign", () => {
-    expect(formatSignedUsd(2_000_000)).toBe("+$2.00");
-    expect(formatSignedUsd(-1_500_000)).toBe("−$1.50");
+    expect(formatSignedUsd(200)).toBe("+$2.00");
+    expect(formatSignedUsd(-150)).toBe("−$1.50");
     expect(formatSignedUsd(0)).toBe("+$0.00");
   });
 
-  it("formatPricePerHour renders a per-second price as an hourly rate", () => {
-    // 277.77.. micro-USD/second ≈ $1.00/hr
-    expect(formatPricePerHour(1_000_000 / 3600)).toBe("$1.00/hr");
+  it("formatPricePerHour renders a cents-per-minute price as an hourly rate", () => {
+    // 5 cents/minute -> $3.00/hr
+    expect(formatPricePerHour(5)).toBe("$3.00/hr");
     expect(formatPricePerHour(0)).toBe("$0.00/hr");
   });
 
-  it("converts between per-second micro-USD and dollars-per-hour", () => {
-    // $1.00/hr <-> 277.77.. micro-USD/second (rounded to whole micro-units).
-    expect(perHourToMicroPerSecond(1)).toBe(278);
-    expect(perHourToMicroPerSecond(0)).toBe(0);
-    expect(microPerSecondToPerHour(1_000_000)).toBe(3600);
-    // Round-trips a whole-cent hourly price within a hair.
-    expect(microPerSecondToPerHour(perHourToMicroPerSecond(2.5))).toBeCloseTo(2.5, 2);
+  it("converts between cents-per-minute and dollars-per-hour", () => {
+    // $3.00/hr <-> 5 cents/minute (rounded to whole cents).
+    expect(perHourToCentsPerMin(3)).toBe(5);
+    expect(perHourToCentsPerMin(0)).toBe(0);
+    expect(centsPerMinToPerHour(5)).toBe(3);
+    // Round-trips a clean hourly price exactly.
+    expect(centsPerMinToPerHour(perHourToCentsPerMin(3))).toBeCloseTo(3, 2);
   });
 
   it("formatDuration renders hours and minutes compactly", () => {

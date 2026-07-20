@@ -34,14 +34,15 @@ export interface ConnectStatusView {
 /**
  * Resolve the account's Connect state from an {@link Earnings} summary into a
  * view model. Prefers the explicit `connect_status`, falling back to the
- * `payouts_enabled` boolean, and defaults to "not started" when neither is set.
+ * `can_receive_payouts` boolean, and defaults to "not started" when neither is
+ * set.
  */
 export function connectStatusView(earnings: Earnings | null): ConnectStatusView {
   const status: ConnectStatus | undefined =
     earnings?.connect_status ??
-    (earnings?.payouts_enabled === true
+    (earnings?.can_receive_payouts === true
       ? "active"
-      : earnings?.payouts_enabled === false
+      : earnings?.can_receive_payouts === false
         ? "not_started"
         : undefined);
 

@@ -2,11 +2,11 @@ import type {
   ApiKey,
   Billing,
   Catalog,
+  CatalogHost,
   ConnectResponse,
   CreateApiKeyRequest,
   CreateApiKeyResponse,
   CreateLeaseRequest,
-  Earnings,
   ErrorEnvelope,
   ExecRequest,
   ExecResult,
@@ -14,6 +14,7 @@ import type {
   Host,
   Lease,
   Me,
+  MyHosts,
   RegisterHostRequest,
   RegisterHostResponse,
   ShellTicket,
@@ -127,30 +128,107 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 }
 
 /**
- * Normalize a transactions response into a {@link TransactionPage}. The endpoint
- * may return a bare array (unpaginated) or a `{ transactions, next_cursor }`
- * envelope; callers get the same shape either way.
+ * Normalize a transactions response into a {@link TransactionPage}. The real
+ * endpoint returns a `{ data, next_cursor }` envelope; this also tolerates a bare
+ * array (unpaginated) and the legacy `{ transactions, next_cursor }` shape, so
+ * callers get the same clean shape regardless of drift.
  */
 export function normalizeTransactionPage(
-  body: TransactionPage | Transaction[] | null | undefined,
+  body:
+    | TransactionPage
+    | { data?: Transaction[]; next_cursor?: string }
+    | Transaction[]
+    | null
+    | undefined,
 ): TransactionPage {
   if (Array.isArray(body)) return { transactions: body };
+  const envelope = body as
+    | { data?: Transaction[]; transactions?: Transaction[]; next_cursor?: string }
+    | null
+    | undefined;
   return {
-    transactions: body?.transactions ?? [],
-    next_cursor: body?.next_cursor,
+    transactions: envelope?.data ?? envelope?.transactions ?? [],
+    next_cursor: envelope?.next_cursor,
   };
 }
 
 /**
- * Normalize a GET /v1/me/api-keys response into a plain `ApiKey[]`. The endpoint
- * may return a bare array or an `{ api_keys }` / `{ keys }` envelope; callers get
- * the same shape either way (mirrors {@link normalizeTransactionPage}).
+ * Normalize a GET /v1/me/api-keys response into a plain `ApiKey[]`. The real
+ * endpoint returns a `{ data }` envelope; this also tolerates a bare array and
+ * the legacy `{ api_keys }` / `{ keys }` envelopes (mirrors
+ * {@link normalizeTransactionPage}).
  */
 export function normalizeApiKeyList(
-  body: ApiKey[] | { api_keys?: ApiKey[]; keys?: ApiKey[] } | null | undefined,
+  body:
+    | ApiKey[]
+    | { data?: ApiKey[]; api_keys?: ApiKey[]; keys?: ApiKey[] }
+    | null
+    | undefined,
 ): ApiKey[] {
   if (Array.isArray(body)) return body;
-  return body?.api_keys ?? body?.keys ?? [];
+  return body?.data ?? body?.api_keys ?? body?.keys ?? [];
+}
+
+/**
+ * Normalize a GET /v1/catalog response into a {@link Catalog}. The real endpoint
+ * returns `{ data, next_cursor }`; this also tolerates a bare array and the
+ * legacy `{ hosts }` envelope so the browser always receives a clean host list.
+ */
+export function normalizeCatalog(
+  body:
+    | Catalog
+    | { data?: CatalogHost[]; hosts?: CatalogHost[]; next_cursor?: string }
+    | CatalogHost[]
+    | null
+    | undefined,
+): Catalog {
+  if (Array.isArray(body)) return { data: body };
+  const envelope = body as
+    | { data?: CatalogHost[]; hosts?: CatalogHost[]; next_cursor?: string }
+    | null
+    | undefined;
+  return {
+    data: envelope?.data ?? envelope?.hosts ?? [],
+    next_cursor: envelope?.next_cursor,
+  };
+}
+
+/**
+ * Normalize a GET /v1/hosts/mine response into a {@link MyHosts}. The real
+ * endpoint returns `{ data, earnings }`; this also tolerates a bare array and the
+ * legacy `{ hosts }` envelope so the host tools page always gets a host list plus
+ * (when present) the earnings block it renders for free.
+ */
+export function normalizeMyHosts(
+  body:
+    | MyHosts
+    | { data?: Host[]; hosts?: Host[]; earnings?: MyHosts["earnings"]; next_cursor?: string }
+    | Host[]
+    | null
+    | undefined,
+): MyHosts {
+  if (Array.isArray(body)) return { data: body };
+  const envelope = body as
+    | { data?: Host[]; hosts?: Host[]; earnings?: MyHosts["earnings"]; next_cursor?: string }
+    | null
+    | undefined;
+  return {
+    data: envelope?.data ?? envelope?.hosts ?? [],
+    earnings: envelope?.earnings,
+    next_cursor: envelope?.next_cursor,
+  };
+}
+
+/**
+ * Normalize a GET /v1/leases response into a plain `Lease[]`. The real endpoint
+ * returns `{ data, next_cursor }`; this also tolerates a bare array (legacy)
+ * so the lease list never crashes on `.map` of a non-array.
+ */
+export function normalizeLeaseList(
+  body: Lease[] | { data?: Lease[]; next_cursor?: string } | null | undefined,
+): Lease[] {
+  if (Array.isArray(body)) return body;
+  return body?.data ?? [];
 }
 
 /** Liveness check against the Wisper API. Never throws. */
@@ -171,15 +249,27 @@ export const wisper = {
   /** GET /v1/me — the signed-in account with its additive roles. */
   me: () => request<Me>("/v1/me"),
 
-  /** GET /v1/catalog — hosts and their priced images. */
-  getCatalog: () => request<Catalog>("/v1/catalog"),
+  /**
+   * GET /v1/catalog — hosts and their priced images. Resolves to a normalized
+   * {@link Catalog} (`{ data, next_cursor }`), tolerating a bare array or a
+   * legacy `{ hosts }` envelope.
+   */
+  getCatalog: (): Promise<Catalog> =>
+    request<Catalog | CatalogHost[]>("/v1/catalog").then(normalizeCatalog),
 
   /** POST /v1/leases — create a lease. */
   createLease: (input: CreateLeaseRequest) =>
     request<Lease>("/v1/leases", { method: "POST", json: input }),
 
-  /** GET /v1/leases — the caller's leases. */
-  listLeases: () => request<Lease[]>("/v1/leases"),
+  /**
+   * GET /v1/leases — the caller's leases. The real endpoint returns
+   * `{ data, next_cursor }`; this normalizes to a `Lease[]` (tolerating a bare
+   * array) so the list renders without crashing on the envelope.
+   */
+  listLeases: (): Promise<Lease[]> =>
+    request<Lease[] | { data?: Lease[]; next_cursor?: string }>("/v1/leases").then(
+      normalizeLeaseList,
+    ),
 
   /** GET /v1/leases/:id — a single lease. */
   getLease: (id: string) => request<Lease>(`/v1/leases/${encodeURIComponent(id)}`),
@@ -213,9 +303,9 @@ export const wisper = {
     if (query.limit != null) params.set("limit", String(query.limit));
     if (query.cursor) params.set("cursor", query.cursor);
     const qs = params.toString();
-    return request<TransactionPage | Transaction[]>(
-      `/v1/billing/transactions${qs ? `?${qs}` : ""}`,
-    ).then(normalizeTransactionPage);
+    return request<
+      TransactionPage | { data?: Transaction[]; next_cursor?: string } | Transaction[]
+    >(`/v1/billing/transactions${qs ? `?${qs}` : ""}`).then(normalizeTransactionPage);
   },
 
   /** POST /v1/billing/topup — start a Stripe top-up, returns a client secret. */
@@ -226,8 +316,13 @@ export const wisper = {
   registerHost: (input: RegisterHostRequest) =>
     request<RegisterHostResponse>("/v1/hosts", { method: "POST", json: input }),
 
-  /** GET /v1/hosts/mine — hosts owned by the account. */
-  myHosts: () => request<Host[]>("/v1/hosts/mine"),
+  /**
+   * GET /v1/hosts/mine — hosts owned by the account. Resolves to a normalized
+   * {@link MyHosts} (`{ data, earnings }`), tolerating a bare array or a legacy
+   * `{ hosts }` envelope. The earnings block comes back on the same call.
+   */
+  myHosts: (): Promise<MyHosts> =>
+    request<MyHosts | Host[]>("/v1/hosts/mine").then(normalizeMyHosts),
 
   /** PUT /v1/hosts/:id/images — replace a host's image pricing. */
   updateHostImages: (id: string, input: UpdateHostImagesRequest) =>
@@ -238,9 +333,6 @@ export const wisper = {
 
   /** POST /v1/hosts/connect — Stripe Connect onboarding link. */
   hostConnect: () => request<ConnectResponse>("/v1/hosts/connect", { method: "POST" }),
-
-  /** GET /v1/earnings — host earnings summary. */
-  getEarnings: () => request<Earnings>("/v1/earnings"),
 
   /** GET /v1/me/api-keys — the account's machine API keys (no secrets). */
   listApiKeys: (): Promise<ApiKey[]> =>

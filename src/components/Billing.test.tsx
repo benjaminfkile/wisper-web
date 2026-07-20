@@ -24,24 +24,23 @@ const getBilling = wisper.getBilling as Mock;
 const getTransactions = wisper.getTransactions as Mock;
 
 const SUMMARY: BillingSummary = {
-  balance_micro_usd: 12_500_000,
+  balance_cents: 1250,
   currency: "USD",
-  spent_micro_usd: 3_000_000,
-  topped_up_micro_usd: 15_500_000,
+  usage: { spent_cents: 300, topped_up_cents: 1550 },
 };
 
 const PAGE1: TransactionPage = {
   transactions: [
     {
       id: "t1",
-      amount_micro_usd: 10_000_000,
+      amount_cents: 1000,
       type: "topup",
       description: "Card top-up",
       created_at: "2026-07-12T00:00:00.000Z",
     },
     {
       id: "t2",
-      amount_micro_usd: -1_500_000,
+      amount_cents: -150,
       type: "lease",
       description: "ubuntu-22.04 lease",
       created_at: "2026-07-11T00:00:00.000Z",
@@ -54,7 +53,7 @@ const PAGE2: TransactionPage = {
   transactions: [
     {
       id: "t3",
-      amount_micro_usd: -500_000,
+      amount_cents: -50,
       type: "lease",
       created_at: "2026-07-10T00:00:00.000Z",
     },

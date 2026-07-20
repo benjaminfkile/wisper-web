@@ -3,6 +3,9 @@ import {
   getAuthToken,
   getHealth,
   normalizeApiKeyList,
+  normalizeCatalog,
+  normalizeLeaseList,
+  normalizeMyHosts,
   normalizeTransactionPage,
   request,
   setAuthToken,
@@ -121,9 +124,16 @@ describe("wisper client", () => {
     expect(spy.mock.calls[0][0]).toBe("/wisper/v1/leases/a%2Fb");
   });
 
-  it("normalizeTransactionPage accepts a bare array or an envelope", () => {
-    expect(normalizeTransactionPage([{ id: "t1", amount_micro_usd: 1, type: "topup", created_at: "" }]))
-      .toEqual({ transactions: [{ id: "t1", amount_micro_usd: 1, type: "topup", created_at: "" }] });
+  it("normalizeTransactionPage accepts the real { data } envelope, a bare array, or legacy", () => {
+    const txn = { id: "t1", amount_cents: 1, type: "topup", created_at: "" };
+    // Real contract: { data, next_cursor }.
+    expect(normalizeTransactionPage({ data: [txn], next_cursor: "c2" })).toEqual({
+      transactions: [txn],
+      next_cursor: "c2",
+    });
+    // Bare array (tolerated).
+    expect(normalizeTransactionPage([txn])).toEqual({ transactions: [txn] });
+    // Legacy { transactions } (tolerated).
     expect(normalizeTransactionPage({ transactions: [], next_cursor: "c2" })).toEqual({
       transactions: [],
       next_cursor: "c2",
@@ -131,22 +141,81 @@ describe("wisper client", () => {
     expect(normalizeTransactionPage(null)).toEqual({ transactions: [] });
   });
 
-  it("getTransactions passes limit/cursor and normalizes a bare array", async () => {
-    const spy = stubFetch(() =>
-      jsonResponse([{ id: "t1", amount_micro_usd: 5, type: "topup", created_at: "" }]),
-    );
+  it("getTransactions passes limit/cursor and normalizes the real { data } envelope", async () => {
+    const txn = { id: "t1", amount_cents: 5, type: "topup", created_at: "" };
+    const spy = stubFetch(() => jsonResponse({ data: [txn], next_cursor: "c2" }));
     const page = await wisper.getTransactions({ limit: 20, cursor: "c1" });
     expect(spy.mock.calls[0][0]).toBe("/wisper/v1/billing/transactions?limit=20&cursor=c1");
-    expect(page).toEqual({
-      transactions: [{ id: "t1", amount_micro_usd: 5, type: "topup", created_at: "" }],
-    });
+    expect(page).toEqual({ transactions: [txn], next_cursor: "c2" });
   });
 
   it("getTransactions omits the query string when no params are given", async () => {
-    const spy = stubFetch(() => jsonResponse({ transactions: [], next_cursor: "c9" }));
+    const spy = stubFetch(() => jsonResponse({ data: [], next_cursor: "c9" }));
     const page = await wisper.getTransactions();
     expect(spy.mock.calls[0][0]).toBe("/wisper/v1/billing/transactions");
     expect(page.next_cursor).toBe("c9");
+  });
+
+  it("normalizeCatalog accepts the real { data } envelope, a bare array, or legacy { hosts }", () => {
+    const host = { host_id: "h1", label: "Falcon", images: [] };
+    expect(normalizeCatalog({ data: [host], next_cursor: "c1" })).toEqual({
+      data: [host],
+      next_cursor: "c1",
+    });
+    expect(normalizeCatalog([host])).toEqual({ data: [host] });
+    expect(normalizeCatalog({ hosts: [host] })).toEqual({ data: [host], next_cursor: undefined });
+    expect(normalizeCatalog(null)).toEqual({ data: [], next_cursor: undefined });
+  });
+
+  it("normalizeMyHosts unwraps { data, earnings }, a bare array, or legacy { hosts }", () => {
+    const host = { id: "h1", name: "workstation" };
+    const earnings = { currency: "USD", accrued_cents: 10, paid_cents: 0 };
+    expect(normalizeMyHosts({ data: [host], earnings })).toEqual({
+      data: [host],
+      earnings,
+      next_cursor: undefined,
+    });
+    expect(normalizeMyHosts([host])).toEqual({ data: [host] });
+    expect(normalizeMyHosts({ hosts: [host] })).toEqual({
+      data: [host],
+      earnings: undefined,
+      next_cursor: undefined,
+    });
+    expect(normalizeMyHosts(null)).toEqual({ data: [], earnings: undefined, next_cursor: undefined });
+  });
+
+  it("normalizeLeaseList unwraps { data } or tolerates a bare array", () => {
+    const lease = { id: "l1", status: "active" } as never;
+    expect(normalizeLeaseList({ data: [lease], next_cursor: "c1" })).toEqual([lease]);
+    expect(normalizeLeaseList([lease])).toEqual([lease]);
+    expect(normalizeLeaseList(null)).toEqual([]);
+  });
+
+  it("getCatalog / myHosts / listLeases unwrap their real envelopes", async () => {
+    stubFetch((url) => {
+      if (url.endsWith("/v1/catalog")) {
+        return jsonResponse({ data: [{ host_id: "h1", label: "Falcon", images: [] }], next_cursor: "c1" });
+      }
+      if (url.endsWith("/v1/hosts/mine")) {
+        return jsonResponse({
+          data: [{ id: "h1", name: "ws" }],
+          earnings: { currency: "USD", accrued_cents: 42, paid_cents: 0 },
+        });
+      }
+      return jsonResponse({ data: [{ id: "l1", status: "active" }], next_cursor: "c2" });
+    });
+
+    const catalog = await wisper.getCatalog();
+    expect(catalog.data[0].host_id).toBe("h1");
+    expect(catalog.next_cursor).toBe("c1");
+
+    const mine = await wisper.myHosts();
+    expect(mine.data[0].id).toBe("h1");
+    expect(mine.earnings?.accrued_cents).toBe(42);
+
+    const leases = await wisper.listLeases();
+    expect(leases).toHaveLength(1);
+    expect(leases[0].id).toBe("l1");
   });
 
   it("normalizeApiKeyList accepts a bare array or an envelope", () => {
@@ -158,12 +227,13 @@ describe("wisper client", () => {
       created_at: "",
     };
     expect(normalizeApiKeyList([key])).toEqual([key]);
+    expect(normalizeApiKeyList({ data: [key] })).toEqual([key]);
     expect(normalizeApiKeyList({ api_keys: [key] })).toEqual([key]);
     expect(normalizeApiKeyList({ keys: [key] })).toEqual([key]);
     expect(normalizeApiKeyList(null)).toEqual([]);
   });
 
-  it("listApiKeys GETs /v1/me/api-keys and normalizes an envelope", async () => {
+  it("listApiKeys GETs /v1/me/api-keys and normalizes the real { data } envelope", async () => {
     const key = {
       id: "k1",
       name: "ci",
@@ -171,7 +241,7 @@ describe("wisper client", () => {
       scopes: ["consumer"],
       created_at: "2026-07-01T00:00:00Z",
     };
-    const spy = stubFetch(() => jsonResponse({ api_keys: [key] }));
+    const spy = stubFetch(() => jsonResponse({ data: [key] }));
     const keys = await wisper.listApiKeys();
     expect(spy.mock.calls[0][0]).toBe("/wisper/v1/me/api-keys");
     expect(keys).toEqual([key]);

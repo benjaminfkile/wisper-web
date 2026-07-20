@@ -57,30 +57,31 @@ export function liveTtlRemainingSeconds(
 }
 
 /**
- * The per-second cost rate for a lease, in micro-USD/second. Uses the lease's
- * `price_micro_usd_per_second` when the API provides it; otherwise derives it from
- * accrued cost over uptime so the running total can still tick between polls.
+ * The per-second cost rate for a lease, in cents/second. Uses the lease's
+ * `price_cents_per_min` (÷60) when the API provides it; otherwise derives the
+ * rate from accrued cost over uptime so the running total can still tick between
+ * polls.
  */
-export function costRateMicroUsdPerSecond(lease: Lease, nowMs: number): number {
-  if (typeof lease.price_micro_usd_per_second === "number") {
-    return Math.max(0, lease.price_micro_usd_per_second);
+export function costRateCentsPerSecond(lease: Lease, nowMs: number): number {
+  if (typeof lease.price_cents_per_min === "number") {
+    return Math.max(0, lease.price_cents_per_min / 60);
   }
   const uptime = leaseUptimeSeconds(lease, nowMs);
-  if (uptime > 0 && typeof lease.cost_micro_usd === "number") {
-    return Math.max(0, lease.cost_micro_usd / uptime);
+  if (uptime > 0 && typeof lease.cost_cents === "number") {
+    return Math.max(0, lease.cost_cents / uptime);
   }
   return 0;
 }
 
 /**
- * Live running cost in micro-USD: the `baseCost` accrued as of the last poll plus
+ * Live running cost in cents: the `baseCost` accrued as of the last poll plus
  * `rate` applied to the seconds elapsed since. Elapsed and rate are clamped
  * non-negative so the total only moves forward.
  */
-export function liveCostMicroUsd(
-  baseCostMicroUsd: number,
-  rateMicroUsdPerSecond: number,
+export function liveCostCents(
+  baseCostCents: number,
+  rateCentsPerSecond: number,
   elapsedSeconds: number,
 ): number {
-  return baseCostMicroUsd + Math.max(0, rateMicroUsdPerSecond) * Math.max(0, elapsedSeconds);
+  return baseCostCents + Math.max(0, rateCentsPerSecond) * Math.max(0, elapsedSeconds);
 }
