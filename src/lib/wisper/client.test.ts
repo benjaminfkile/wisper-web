@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getAuthToken,
   getHealth,
+  normalizeApiKeyList,
   normalizeTransactionPage,
   request,
   setAuthToken,
@@ -146,6 +147,70 @@ describe("wisper client", () => {
     const page = await wisper.getTransactions();
     expect(spy.mock.calls[0][0]).toBe("/wisper/v1/billing/transactions");
     expect(page.next_cursor).toBe("c9");
+  });
+
+  it("normalizeApiKeyList accepts a bare array or an envelope", () => {
+    const key = {
+      id: "k1",
+      name: "ci",
+      token_prefix: "wck_live_abcd",
+      scopes: ["consumer" as const],
+      created_at: "",
+    };
+    expect(normalizeApiKeyList([key])).toEqual([key]);
+    expect(normalizeApiKeyList({ api_keys: [key] })).toEqual([key]);
+    expect(normalizeApiKeyList({ keys: [key] })).toEqual([key]);
+    expect(normalizeApiKeyList(null)).toEqual([]);
+  });
+
+  it("listApiKeys GETs /v1/me/api-keys and normalizes an envelope", async () => {
+    const key = {
+      id: "k1",
+      name: "ci",
+      token_prefix: "wck_live_abcd",
+      scopes: ["consumer"],
+      created_at: "2026-07-01T00:00:00Z",
+    };
+    const spy = stubFetch(() => jsonResponse({ api_keys: [key] }));
+    const keys = await wisper.listApiKeys();
+    expect(spy.mock.calls[0][0]).toBe("/wisper/v1/me/api-keys");
+    expect(keys).toEqual([key]);
+  });
+
+  it("createApiKey POSTs name + scopes and returns the full token once", async () => {
+    const body = {
+      key: { id: "k2", name: "bot", token_prefix: "wck_live_ef01", scopes: ["consumer"], created_at: "" },
+      token: "wck_live_" + "a".repeat(64),
+    };
+    const spy = stubFetch(() => jsonResponse(body));
+    const result = await wisper.createApiKey({ name: "bot", scopes: ["consumer"] });
+    const init = spy.mock.calls[0][1] as RequestInit;
+    expect(spy.mock.calls[0][0]).toBe("/wisper/v1/me/api-keys");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ name: "bot", scopes: ["consumer"] });
+    expect(result.token).toBe(body.token);
+  });
+
+  it("revokeApiKey DELETEs /v1/me/api-keys/:id (encoded)", async () => {
+    const spy = stubFetch(() => new Response(null, { status: 204 }));
+    await expect(wisper.revokeApiKey("k/2")).resolves.toBeUndefined();
+    const init = spy.mock.calls[0][1] as RequestInit;
+    expect(spy.mock.calls[0][0]).toBe("/wisper/v1/me/api-keys/k%2F2");
+    expect(init.method).toBe("DELETE");
+  });
+
+  it("surfaces the backend 403 when a key session tries to mint (JWT-only)", async () => {
+    stubFetch(() =>
+      jsonResponse(
+        { error: { code: "forbidden", message: "API keys cannot mint API keys", request_id: "r1" } },
+        403,
+      ),
+    );
+    await expect(wisper.createApiKey({ name: "x" })).rejects.toMatchObject({
+      status: 403,
+      code: "forbidden",
+      message: "API keys cannot mint API keys",
+    });
   });
 
   it("WisperError carries status, code, and message", () => {

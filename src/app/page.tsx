@@ -9,6 +9,7 @@ import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
+import VpnKeyIcon from "@mui/icons-material/VpnKey";
 import ProtectedShell from "@/components/ProtectedShell";
 import { useAuth } from "@/lib/auth/AuthContext";
 
@@ -41,6 +42,21 @@ function Dashboard() {
             Browse the catalog to launch a lease, manage running leases, or top up your wallet.
             Host tools appear here once your account holds the host role.
           </Typography>
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined">
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            API keys
+          </Typography>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            Mint machine keys to drive your leases and hosts from an orchestrator or automation —
+            each is sent just like your session, as a bearer token.
+          </Typography>
+          <Button component={NextLink} href="/account/api-keys" variant="outlined" startIcon={<VpnKeyIcon />}>
+            Manage API keys
+          </Button>
         </CardContent>
       </Card>
 

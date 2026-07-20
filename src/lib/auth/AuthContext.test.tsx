@@ -36,6 +36,8 @@ function Consumer() {
     status,
     user,
     hasRole,
+    authMethod,
+    isApiKeySession,
     signIn: doSignIn,
     signInWithApiKey: doSignInWithApiKey,
     signOut: doSignOut,
@@ -46,6 +48,8 @@ function Consumer() {
       <div data-testid="email">{user?.email ?? ""}</div>
       <div data-testid="roles">{(user?.roles ?? []).join(",")}</div>
       <div data-testid="isHost">{String(hasRole("host"))}</div>
+      <div data-testid="authMethod">{authMethod ?? ""}</div>
+      <div data-testid="isApiKeySession">{String(isApiKeySession)}</div>
       <button onClick={() => void doSignIn("a@b.c", "pw")}>signin</button>
       <button onClick={() => void doSignInWithApiKey("wck_live_key").catch(() => {})}>
         signin-apikey
@@ -100,6 +104,9 @@ describe("AuthContext", () => {
     expect(screen.getByTestId("email").textContent).toBe("a@b.c");
     expect(screen.getByTestId("roles").textContent).toBe("consumer,host");
     expect(screen.getByTestId("isHost").textContent).toBe("true");
+    // A restored Cognito session is not an API-key session.
+    expect(screen.getByTestId("authMethod").textContent).toBe("cognito");
+    expect(screen.getByTestId("isApiKeySession").textContent).toBe("false");
   });
 
   it("signs in, then signs out clearing the user", async () => {
@@ -179,6 +186,9 @@ describe("AuthContext", () => {
     expect(localStorage.getItem(API_KEY_STORAGE)).toBe("wck_live_key");
     expect(lastBearer(fetchMock)).toBe("Bearer wck_live_key");
     expect(screen.getByTestId("isHost").textContent).toBe("true");
+    // The flag marks this as an API-key session (minting is JWT-only downstream).
+    expect(screen.getByTestId("authMethod").textContent).toBe("apiKey");
+    expect(screen.getByTestId("isApiKeySession").textContent).toBe("true");
   });
 
   it("clears the key and stays unauthenticated when the API key is rejected", async () => {

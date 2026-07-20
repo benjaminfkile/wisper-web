@@ -1,7 +1,10 @@
 import type {
+  ApiKey,
   Billing,
   Catalog,
   ConnectResponse,
+  CreateApiKeyRequest,
+  CreateApiKeyResponse,
   CreateLeaseRequest,
   Earnings,
   ErrorEnvelope,
@@ -138,6 +141,18 @@ export function normalizeTransactionPage(
   };
 }
 
+/**
+ * Normalize a GET /v1/me/api-keys response into a plain `ApiKey[]`. The endpoint
+ * may return a bare array or an `{ api_keys }` / `{ keys }` envelope; callers get
+ * the same shape either way (mirrors {@link normalizeTransactionPage}).
+ */
+export function normalizeApiKeyList(
+  body: ApiKey[] | { api_keys?: ApiKey[]; keys?: ApiKey[] } | null | undefined,
+): ApiKey[] {
+  if (Array.isArray(body)) return body;
+  return body?.api_keys ?? body?.keys ?? [];
+}
+
 /** Liveness check against the Wisper API. Never throws. */
 export async function getHealth(): Promise<boolean> {
   try {
@@ -226,6 +241,24 @@ export const wisper = {
 
   /** GET /v1/earnings — host earnings summary. */
   getEarnings: () => request<Earnings>("/v1/earnings"),
+
+  /** GET /v1/me/api-keys — the account's machine API keys (no secrets). */
+  listApiKeys: (): Promise<ApiKey[]> =>
+    request<ApiKey[] | { api_keys?: ApiKey[]; keys?: ApiKey[] }>("/v1/me/api-keys").then(
+      normalizeApiKeyList,
+    ),
+
+  /**
+   * POST /v1/me/api-keys — mint a key; the full secret is returned exactly once.
+   * JWT-only by design: minting from an API-key session 403s (a key can't mint
+   * keys), which surfaces as a {@link WisperError} the caller renders verbatim.
+   */
+  createApiKey: (input: CreateApiKeyRequest) =>
+    request<CreateApiKeyResponse>("/v1/me/api-keys", { method: "POST", json: input }),
+
+  /** DELETE /v1/me/api-keys/:id — revoke a key (it stays listed, revoked). */
+  revokeApiKey: (id: string) =>
+    request<void>(`/v1/me/api-keys/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
 
 /**
