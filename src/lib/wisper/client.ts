@@ -257,9 +257,15 @@ export const wisper = {
   getCatalog: (): Promise<Catalog> =>
     request<Catalog | CatalogHost[]>("/v1/catalog").then(normalizeCatalog),
 
-  /** POST /v1/leases — create a lease. */
+  /** POST /v1/leases — create a lease. The API REQUIRES an Idempotency-Key on
+   * this call; a fresh key per invocation is correct (each click is a distinct
+   * provision — a browser retry of the same response is what the key guards). */
   createLease: (input: CreateLeaseRequest) =>
-    request<Lease>("/v1/leases", { method: "POST", json: input }),
+    request<Lease>("/v1/leases", {
+      method: "POST",
+      json: input,
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+    }),
 
   /**
    * GET /v1/leases — the caller's leases. The real endpoint returns
@@ -308,9 +314,14 @@ export const wisper = {
     >(`/v1/billing/transactions${qs ? `?${qs}` : ""}`).then(normalizeTransactionPage);
   },
 
-  /** POST /v1/billing/topup — start a Stripe top-up, returns a client secret. */
+  /** POST /v1/billing/topup — start a Stripe top-up, returns a client secret.
+   * The API REQUIRES an Idempotency-Key here (docs/API.md §5). */
   topup: (input: TopupRequest) =>
-    request<TopupResponse>("/v1/billing/topup", { method: "POST", json: input }),
+    request<TopupResponse>("/v1/billing/topup", {
+      method: "POST",
+      json: input,
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+    }),
 
   /** POST /v1/hosts — register a host; `agent_token` is returned once. */
   registerHost: (input: RegisterHostRequest) =>
