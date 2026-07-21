@@ -12,6 +12,7 @@ import type {
   ExecResult,
   HealthResponse,
   Host,
+  HostImage,
   Lease,
   Me,
   MyHosts,
@@ -351,6 +352,14 @@ export const wisper = {
    */
   myHosts: (): Promise<MyHosts> =>
     request<MyHosts | Host[]>("/v1/hosts/mine").then(normalizeMyHosts),
+
+  /** GET /v1/hosts/:id/images — the host's current priced image list, with
+   * price, networks, and max_ttl_seconds. `GET /v1/hosts/mine` omits images, so
+   * this is the source the editor loads to avoid a blank PUT wiping the list. */
+  getHostImages: (id: string): Promise<HostImage[]> =>
+    request<{ data?: HostImage[] } | HostImage[]>(
+      `/v1/hosts/${encodeURIComponent(id)}/images`,
+    ).then((r) => (Array.isArray(r) ? r : r.data ?? [])),
 
   /** PUT /v1/hosts/:id/images — replace a host's image pricing. */
   updateHostImages: (id: string, input: UpdateHostImagesRequest) =>

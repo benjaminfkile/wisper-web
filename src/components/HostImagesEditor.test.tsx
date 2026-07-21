@@ -2,45 +2,57 @@ import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import HostImagesEditor from "./HostImagesEditor";
-import type { Host } from "@/lib/wisper/types";
+import type { Host, HostImage } from "@/lib/wisper/types";
 
 vi.mock("@/lib/wisper/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/wisper/client")>();
   return {
     ...actual,
-    wisper: { ...actual.wisper, updateHostImages: vi.fn() },
+    wisper: { ...actual.wisper, getHostImages: vi.fn(), updateHostImages: vi.fn() },
   };
 });
 
 import { wisper } from "@/lib/wisper/client";
 
+const getHostImages = wisper.getHostImages as Mock;
 const updateHostImages = wisper.updateHostImages as Mock;
 
-const HOST: Host = {
-  id: "host-1",
-  name: "workstation",
-  images: [
-    { host_image_id: "img-1", image_ref: "ubuntu-22.04", price_cents_per_min: 5, enabled: true },
-  ],
-};
+const HOST: Host = { id: "host-1", name: "workstation" };
+
+const IMAGES: HostImage[] = [
+  {
+    host_image_id: "img-1",
+    image_ref: "ubuntu-22.04",
+    price_cents_per_min: 5,
+    max_ttl_seconds: 3600,
+    networks: ["none", "open"],
+    enabled: true,
+  },
+];
 
 describe("HostImagesEditor", () => {
   afterEach(() => vi.clearAllMocks());
 
-  it("seeds rows from the host's images with a $/hr price", () => {
+  it("loads rows from GET /hosts/:id/images with a $/hr price", async () => {
+    getHostImages.mockResolvedValue(IMAGES);
     render(<HostImagesEditor host={HOST} onSaved={() => {}} />);
-    expect(screen.getByDisplayValue("ubuntu-22.04")).toBeInTheDocument();
+    // Loaded asynchronously (avoids a blank PUT wiping the list).
+    expect(await screen.findByDisplayValue("ubuntu-22.04")).toBeInTheDocument();
+    expect(getHostImages).toHaveBeenCalledWith("host-1");
     // 5 cents/min -> $3.00/hr.
     expect(screen.getByLabelText("price for ubuntu-22.04")).toHaveValue(3);
+    // 3600s -> 60 min.
+    expect(screen.getByLabelText("max ttl minutes for ubuntu-22.04")).toHaveValue(60);
   });
 
-  it("saves the full image list converted back to cents-per-minute", async () => {
+  it("saves the full image list with price, ttl, and networks", async () => {
     const user = userEvent.setup();
+    getHostImages.mockResolvedValue(IMAGES);
     updateHostImages.mockResolvedValue({ ...HOST });
     const onSaved = vi.fn();
     render(<HostImagesEditor host={HOST} onSaved={onSaved} />);
 
-    const price = screen.getByLabelText("price for ubuntu-22.04");
+    const price = await screen.findByLabelText("price for ubuntu-22.04");
     await user.clear(price);
     await user.type(price, "6");
     await user.click(screen.getByRole("button", { name: /save changes/i }));
@@ -53,6 +65,8 @@ describe("HostImagesEditor", () => {
       image_ref: "ubuntu-22.04",
       enabled: true,
       price_cents_per_min: 10, // $6.00/hr
+      max_ttl_seconds: 3600,
+      networks: ["none", "open"],
     });
     expect(onSaved).toHaveBeenCalled();
     expect(await screen.findByText("Saved")).toBeInTheDocument();
@@ -60,14 +74,16 @@ describe("HostImagesEditor", () => {
 
   it("adds and removes image rows", async () => {
     const user = userEvent.setup();
+    getHostImages.mockResolvedValue(IMAGES);
     updateHostImages.mockResolvedValue({ ...HOST });
     render(<HostImagesEditor host={HOST} onSaved={() => {}} />);
+    await screen.findByDisplayValue("ubuntu-22.04");
 
     await user.click(screen.getByRole("button", { name: /add image/i }));
     const names = screen.getAllByLabelText("image name");
     expect(names).toHaveLength(2);
 
-    // New empty row makes the form invalid -> save disabled.
+    // New empty row (blank name) makes the form invalid -> save disabled.
     expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: /remove ubuntu-22.04/i }));
@@ -77,8 +93,10 @@ describe("HostImagesEditor", () => {
   it("surfaces a save error", async () => {
     const user = userEvent.setup();
     const { WisperError } = await import("@/lib/wisper/client");
+    getHostImages.mockResolvedValue(IMAGES);
     updateHostImages.mockRejectedValue(new WisperError(400, "invalid", "bad pricing"));
     render(<HostImagesEditor host={HOST} onSaved={() => {}} />);
+    await screen.findByDisplayValue("ubuntu-22.04");
 
     await user.click(screen.getByRole("button", { name: /save changes/i }));
     expect(await screen.findByText("bad pricing")).toBeInTheDocument();

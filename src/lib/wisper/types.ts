@@ -248,6 +248,10 @@ export interface HostImage {
   image_ref: string;
   price_cents_per_min?: number;
   enabled?: boolean;
+  /** Networks offered for this image; a subset of the host's advertised set. */
+  networks?: WispNetwork[];
+  /** Max lease TTL in seconds. Required by the API on save (positive integer). */
+  max_ttl_seconds?: number;
 }
 
 /**
