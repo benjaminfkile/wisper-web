@@ -31,6 +31,23 @@ import type {
 const BASE = "/wisper";
 
 /**
+ * A fresh UUID v4 for Idempotency-Key headers. `crypto.randomUUID()` only exists
+ * in secure contexts (HTTPS or localhost), so it is absent when the app is served
+ * over plain HTTP to a LAN IP — falling back to `crypto.getRandomValues`, which is
+ * available in insecure contexts too, keeps lease/top-up creation working there.
+ */
+function newIdempotencyKey(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  const b = new Uint8Array(16);
+  c.getRandomValues(b);
+  b[6] = (b[6] & 0x0f) | 0x40; // version 4
+  b[8] = (b[8] & 0x3f) | 0x80; // variant 10
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0"));
+  return `${h[0]}${h[1]}${h[2]}${h[3]}-${h[4]}${h[5]}-${h[6]}${h[7]}-${h[8]}${h[9]}-${h[10]}${h[11]}${h[12]}${h[13]}${h[14]}${h[15]}`;
+}
+
+/**
  * The Cognito JWT attached as `Authorization: Bearer` on every request. The auth
  * provider owns this value and calls `setAuthToken` on sign-in / sign-out /
  * session restore, keeping the client decoupled from React state.
@@ -264,7 +281,7 @@ export const wisper = {
     request<Lease>("/v1/leases", {
       method: "POST",
       json: input,
-      headers: { "Idempotency-Key": crypto.randomUUID() },
+      headers: { "Idempotency-Key": newIdempotencyKey() },
     }),
 
   /**
@@ -320,7 +337,7 @@ export const wisper = {
     request<TopupResponse>("/v1/billing/topup", {
       method: "POST",
       json: input,
-      headers: { "Idempotency-Key": crypto.randomUUID() },
+      headers: { "Idempotency-Key": newIdempotencyKey() },
     }),
 
   /** POST /v1/hosts — register a host; `agent_token` is returned once. */
