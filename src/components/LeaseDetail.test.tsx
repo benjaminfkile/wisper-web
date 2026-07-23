@@ -79,6 +79,22 @@ describe("LeaseDetail", () => {
     expect(screen.queryByText("OS")).not.toBeInTheDocument();
   });
 
+  it("shows the isolation level when the lease advertises one", async () => {
+    getLease.mockResolvedValue(lease({ isolation: "sandboxed" }));
+    render(<LeaseDetail leaseId="l1" pollMs={0} />);
+
+    expect(await screen.findByText("Isolation")).toBeInTheDocument();
+    expect(screen.getByText("gVisor sandbox")).toBeInTheDocument();
+  });
+
+  it("omits the isolation field when the lease has none", async () => {
+    getLease.mockResolvedValue(lease({ isolation: undefined }));
+    render(<LeaseDetail leaseId="l1" pollMs={0} />);
+
+    await screen.findByText("active");
+    expect(screen.queryByText("Isolation")).not.toBeInTheDocument();
+  });
+
   it("switches the Exec command placeholder for a windows lease", async () => {
     const user = userEvent.setup();
     getLease.mockResolvedValue(lease({ os: "windows" }));

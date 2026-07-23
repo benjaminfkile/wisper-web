@@ -23,6 +23,7 @@ import LeaseConsole from "./LeaseConsole";
 import LeaseExec from "./LeaseExec";
 import { formatDateTime, formatHms, formatUsd } from "@/lib/format";
 import { osLabel } from "@/lib/os";
+import { isolationLabel } from "@/lib/isolation";
 import { isTerminalLease, leaseStatusColor } from "@/lib/leaseStatus";
 import {
   baseTtlRemainingSeconds,
@@ -254,6 +255,9 @@ export default function LeaseDetail({ leaseId, pollMs = 5000 }: LeaseDetailProps
                     <Field label="Host">{lease.host_id}</Field>
                     <Field label="Network">{lease.network}</Field>
                     {lease.os && <Field label="OS">{osLabel(lease.os)}</Field>}
+                    {lease.isolation && (
+                      <Field label="Isolation">{isolationLabel(lease.isolation)}</Field>
+                    )}
                     <Field label="TTL">{formatHms(lease.ttl_seconds)}</Field>
                     <Field label="Created">{formatDateTime(lease.created_at)}</Field>
                     <Field label="Started">{formatDateTime(lease.started_at)}</Field>
