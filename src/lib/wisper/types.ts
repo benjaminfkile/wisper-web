@@ -60,6 +60,15 @@ export type LeaseStatus =
 export type WispNetwork = "none" | "open" | "egress";
 
 /**
+ * Ordered isolation level a lease's container runs under, weakest to strongest:
+ * `shared` (shared host kernel), `sandboxed` (gVisor user-space kernel), `vm`
+ * (hardware-virtualized). The API is authoritative about which levels a host
+ * offers; the type stays a plain string-union so an unknown future level from a
+ * newer API is still carried and displayed rather than dropped.
+ */
+export type IsolationLevel = "shared" | "sandboxed" | "vm";
+
+/**
  * Operating system a host/lease container serves. Optional on every shape: older
  * API builds omit it, so consumers must tolerate `undefined` and fall back to an
  * OS-neutral presentation.
@@ -83,6 +92,13 @@ export interface PricedImage {
   max_cpus?: number;
   max_memory_mb?: number;
   max_pids?: number;
+  /**
+   * Isolation levels this image can be leased under, strongest-offered set. When
+   * absent (older API) the create flow shows no isolation control and sends none.
+   */
+  isolation_levels?: IsolationLevel[];
+  /** The level pre-selected in the create flow; one of `isolation_levels`. */
+  default_isolation?: IsolationLevel;
 }
 
 /**
@@ -126,6 +142,8 @@ export interface CreateLeaseRequest {
   resources?: LeaseResources;
   ttl_seconds: number;
   userdata?: string;
+  /** Chosen isolation level; omitted when the host advertises none to choose. */
+  isolation?: IsolationLevel;
 }
 
 /** A lease (GET /v1/leases[/:id], POST /v1/leases). */
@@ -139,6 +157,8 @@ export interface Lease {
   ttl_seconds: number;
   /** OS of the leased container, when known (older API omits it). */
   os?: HostOs;
+  /** Isolation level this lease runs under, when reported (older API omits it). */
+  isolation?: IsolationLevel;
   /**
    * Server's snapshot of the lease's remaining time-to-live, in seconds. The
    * detail view counts this down live between polls and re-syncs to the value

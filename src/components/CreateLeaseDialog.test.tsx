@@ -107,6 +107,49 @@ describe("CreateLeaseDialog", () => {
     expect(placeholder).toMatch(/windows/i);
   });
 
+  it("omits the isolation control and field when the image advertises none", () => {
+    renderDialog();
+    expect(screen.queryByLabelText(/Isolation/i)).not.toBeInTheDocument();
+  });
+
+  it("defaults isolation to default_isolation and posts the chosen level", async () => {
+    const user = userEvent.setup();
+    createLease.mockResolvedValue({ id: "l3", status: "pending" });
+    renderDialog({
+      image: {
+        ...image,
+        isolation_levels: ["shared", "sandboxed", "vm"],
+        default_isolation: "sandboxed",
+      },
+    });
+
+    // Defaults to the host's default_isolation.
+    expect(screen.getByLabelText(/Isolation/i)).toHaveTextContent("gVisor sandbox");
+
+    // Pick a stronger level and submit.
+    await user.click(screen.getByLabelText(/Isolation/i));
+    await user.click(await screen.findByRole("option", { name: "VM isolation" }));
+    await user.click(screen.getByRole("button", { name: /create lease/i }));
+
+    await waitFor(() => expect(createLease).toHaveBeenCalledTimes(1));
+    expect(createLease).toHaveBeenCalledWith(expect.objectContaining({ isolation: "vm" }));
+  });
+
+  it("renders a read-only Shared indicator for a shared-only host", async () => {
+    const user = userEvent.setup();
+    createLease.mockResolvedValue({ id: "l4", status: "pending" });
+    renderDialog({ image: { ...image, isolation_levels: ["shared"] } });
+
+    // Read-only text field, not an interactive picker.
+    const field = screen.getByLabelText(/Isolation/i);
+    expect(field).toHaveValue("Shared kernel");
+    expect(field).toHaveAttribute("readonly");
+
+    await user.click(screen.getByRole("button", { name: /create lease/i }));
+    await waitFor(() => expect(createLease).toHaveBeenCalledTimes(1));
+    expect(createLease).toHaveBeenCalledWith(expect.objectContaining({ isolation: "shared" }));
+  });
+
   it("surfaces a 402 insufficient_funds with a top-up link", async () => {
     const user = userEvent.setup();
     createLease.mockRejectedValue(new WisperError(402, "insufficient_funds", "wallet too low"));

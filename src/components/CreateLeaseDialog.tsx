@@ -17,9 +17,11 @@ import Typography from "@mui/material/Typography";
 import { wisper, WisperError } from "@/lib/wisper/client";
 import { formatPricePerHour } from "@/lib/format";
 import { userdataHint } from "@/lib/os";
+import { isolationLabel } from "@/lib/isolation";
 import type {
   CatalogHost,
   CreateLeaseRequest,
+  IsolationLevel,
   Lease,
   LeaseResources,
   PricedImage,
@@ -70,6 +72,7 @@ export default function CreateLeaseDialog({
   onCreated,
 }: CreateLeaseDialogProps) {
   const [network, setNetwork] = useState<WispNetwork>("egress");
+  const [isolation, setIsolation] = useState<IsolationLevel | "">("");
   const [cpu, setCpu] = useState("");
   const [memoryMb, setMemoryMb] = useState("");
   const [diskMb, setDiskMb] = useState("");
@@ -79,11 +82,19 @@ export default function CreateLeaseDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<WisperError | null>(null);
 
+  // Isolation levels the selected image can be leased under (older API omits them).
+  const isolationLevels = useMemo(() => image?.isolation_levels ?? [], [image]);
+  // A single advertised level (e.g. shared-only) is shown read-only — nothing to pick.
+  const isolationReadOnly = isolationLevels.length === 1;
+
   // Reset transient state each time the dialog is (re)opened for a selection.
   useEffect(() => {
     if (open) {
       setError(null);
       setSubmitting(false);
+      const levels = image?.isolation_levels ?? [];
+      const preferred = image?.default_isolation;
+      setIsolation(preferred && levels.includes(preferred) ? preferred : levels[0] ?? "");
     }
   }, [open, host, image]);
 
@@ -116,6 +127,7 @@ export default function CreateLeaseDialog({
     };
     if (Object.keys(resources).length > 0) body.resources = resources;
     if (userdata.trim()) body.userdata = userdata;
+    if (isolation) body.isolation = isolation;
 
     try {
       const lease = await wisper.createLease(body);
@@ -164,6 +176,32 @@ export default function CreateLeaseDialog({
                 </MenuItem>
               ))}
             </TextField>
+
+            {isolationLevels.length > 0 &&
+              (isolationReadOnly ? (
+                <TextField
+                  label="Isolation"
+                  value={isolationLabel(isolationLevels[0])}
+                  slotProps={{ input: { readOnly: true } }}
+                  helperText="This host offers a single isolation level."
+                  fullWidth
+                />
+              ) : (
+                <TextField
+                  select
+                  label="Isolation"
+                  value={isolation}
+                  onChange={(e) => setIsolation(e.target.value as IsolationLevel)}
+                  helperText="How strongly this lease is isolated from the host."
+                  fullWidth
+                >
+                  {isolationLevels.map((lvl) => (
+                    <MenuItem key={lvl} value={lvl}>
+                      {isolationLabel(lvl)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              ))}
 
             <Box>
               <Typography variant="overline" color="text.secondary">
