@@ -21,9 +21,16 @@ import CreateLeaseDialog from "@/components/CreateLeaseDialog";
 import { wisper, WisperError } from "@/lib/wisper/client";
 import { formatPricePerHour } from "@/lib/format";
 import { osLabel } from "@/lib/os";
+import {
+  ISOLATION_ORDER,
+  isolationLabel,
+  offersAtLeast,
+  sortIsolationLevels,
+} from "@/lib/isolation";
 import type { CatalogHost, Lease, PricedImage } from "@/lib/wisper/types";
 
 const ALL_REGIONS = "__all__";
+const ANY_ISOLATION = "__any__";
 
 /**
  * Browse GET /v1/catalog: one card per host, each listing its priced images with
@@ -36,6 +43,7 @@ export default function CatalogBrowser() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState(ALL_REGIONS);
+  const [minIsolation, setMinIsolation] = useState(ANY_ISOLATION);
 
   const [dialogHost, setDialogHost] = useState<CatalogHost | null>(null);
   const [dialogImage, setDialogImage] = useState<PricedImage | null>(null);
@@ -75,7 +83,12 @@ export default function CatalogBrowser() {
     return (hosts ?? [])
       .filter((h) => region === ALL_REGIONS || h.region === region)
       .map((h) => {
-        const images = h.images ?? [];
+        let images = h.images ?? [];
+        if (minIsolation !== ANY_ISOLATION) {
+          images = images.filter((img) =>
+            offersAtLeast(img.isolation_levels, minIsolation),
+          );
+        }
         if (!q) return { host: h, images };
         const hostMatch = h.label.toLowerCase().includes(q);
         const matchedImages = hostMatch
@@ -84,7 +97,7 @@ export default function CatalogBrowser() {
         return { host: h, images: matchedImages };
       })
       .filter((entry) => entry.images.length > 0);
-  }, [hosts, search, region]);
+  }, [hosts, search, region, minIsolation]);
 
   function openLease(host: CatalogHost, image: PricedImage) {
     setDialogHost(host);
@@ -148,6 +161,21 @@ export default function CatalogBrowser() {
             </MenuItem>
           ))}
         </TextField>
+        <TextField
+          select
+          label="Min isolation"
+          value={minIsolation}
+          onChange={(e) => setMinIsolation(e.target.value)}
+          size="small"
+          sx={{ minWidth: 180 }}
+        >
+          <MenuItem value={ANY_ISOLATION}>Any isolation</MenuItem>
+          {ISOLATION_ORDER.map((lvl) => (
+            <MenuItem key={lvl} value={lvl}>
+              {isolationLabel(lvl)}
+            </MenuItem>
+          ))}
+        </TextField>
       </Stack>
 
       {filtered.length === 0 ? (
@@ -205,6 +233,24 @@ export default function CatalogBrowser() {
                               ? formatPricePerHour(image.price_cents_per_min)
                               : "Price on request"}
                           </Typography>
+                          {image.isolation_levels && image.isolation_levels.length > 0 ? (
+                            <Stack
+                              direction="row"
+                              spacing={0.5}
+                              useFlexGap
+                              sx={{ mt: 0.75, flexWrap: "wrap" }}
+                            >
+                              {sortIsolationLevels(image.isolation_levels).map((lvl) => (
+                                <Chip
+                                  key={lvl}
+                                  size="small"
+                                  variant="outlined"
+                                  label={isolationLabel(lvl)}
+                                  aria-label={`isolation ${isolationLabel(lvl)}`}
+                                />
+                              ))}
+                            </Stack>
+                          ) : null}
                         </Box>
                         <Button
                           size="small"

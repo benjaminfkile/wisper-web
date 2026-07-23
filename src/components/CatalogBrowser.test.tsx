@@ -31,8 +31,18 @@ const CATALOG: Catalog = {
       online: true,
       os: "linux",
       images: [
-        { host_image_id: "img1", image_ref: "ubuntu-22.04", price_cents_per_min: 5 },
-        { host_image_id: "img2", image_ref: "gpu-cuda", price_cents_per_min: 10 },
+        {
+          host_image_id: "img1",
+          image_ref: "ubuntu-22.04",
+          price_cents_per_min: 5,
+          isolation_levels: ["shared", "sandboxed"],
+        },
+        {
+          host_image_id: "img2",
+          image_ref: "gpu-cuda",
+          price_cents_per_min: 10,
+          isolation_levels: ["vm"],
+        },
       ],
     },
     {
@@ -122,6 +132,38 @@ describe("CatalogBrowser", () => {
     render(<CatalogBrowser />);
 
     expect(await screen.findByText("Windows")).toBeInTheDocument();
+  });
+
+  it("shows each image's isolation levels as human-labeled chips", async () => {
+    getCatalog.mockResolvedValue(CATALOG);
+    render(<CatalogBrowser />);
+
+    // ubuntu-22.04 offers shared + sandboxed; both surface with their short labels.
+    const ubuntuRow = (await screen.findByText("ubuntu-22.04")).closest(
+      ".MuiCardContent-root",
+    ) as HTMLElement;
+    expect(within(ubuntuRow).getByText("Shared kernel")).toBeInTheDocument();
+    expect(within(ubuntuRow).getByText("gVisor sandbox")).toBeInTheDocument();
+    // gpu-cuda offers VM isolation.
+    expect(screen.getByText("VM isolation")).toBeInTheDocument();
+    // Condor's image advertises none, so no isolation chip appears on its card.
+    const condorCard = screen.getByText("Condor").closest(".MuiCard-root") as HTMLElement;
+    expect(within(condorCard).queryByText(/kernel|sandbox|VM isolation/i)).toBeNull();
+  });
+
+  it("filters images by a minimum isolation level", async () => {
+    const user = userEvent.setup();
+    getCatalog.mockResolvedValue(CATALOG);
+    render(<CatalogBrowser />);
+    await screen.findByText("Falcon");
+
+    await user.click(screen.getByLabelText(/Min isolation/i));
+    await user.click(await screen.findByRole("option", { name: "VM isolation" }));
+
+    // Only gpu-cuda (vm) survives; shared/sandboxed-only images drop out.
+    await waitFor(() => expect(screen.queryByText("ubuntu-22.04")).not.toBeInTheDocument());
+    expect(screen.getByText("gpu-cuda")).toBeInTheDocument();
+    expect(screen.queryByText("debian-12")).not.toBeInTheDocument();
   });
 
   it("shows an error alert when the catalog fails to load", async () => {
