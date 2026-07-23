@@ -71,7 +71,9 @@ describe("LoginPage (Cognito unconfigured)", () => {
 
   it("stores, validates, and authenticates on a good key", async () => {
     const user = userEvent.setup();
-    const fetchMock = vi.fn(async () => meResponse(["consumer", "host"]));
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () => meResponse(["consumer", "host"]),
+    );
     vi.stubGlobal("fetch", fetchMock);
     renderLogin();
     await waitFor(() =>

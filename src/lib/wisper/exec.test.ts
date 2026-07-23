@@ -112,13 +112,15 @@ describe("execStream", () => {
   });
 
   it("posts to the stream=1 endpoint with the bearer token and body", async () => {
-    const spy = vi.fn(() => sseResponse(["data: {\"exit_code\":0}\n\n"]));
+    const spy = vi.fn<(input: RequestInfo | URL, init: RequestInit) => Response>(() =>
+      sseResponse(["data: {\"exit_code\":0}\n\n"]),
+    );
     vi.stubGlobal("fetch", spy);
     setAuthToken("jwt-abc");
 
     await execStream("lease-1", { command: ["ls"] }, { onEvent: () => {} });
 
-    const [url, init] = spy.mock.calls[0] as [string, RequestInit];
+    const [url, init] = spy.mock.calls[0];
     expect(url).toBe("/wisper/v1/leases/lease-1/exec?stream=1");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer jwt-abc");
