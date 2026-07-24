@@ -327,10 +327,15 @@ export interface RegisterHostRequest {
  * `manager_ws` is the WebSocket the freshly-installed agent dials back to.
  */
 export interface RegisterHostResponse {
-  host: Host;
+  /** The new host's id. */
+  id: string;
+  /** The host's display name (echoed from the request). */
+  name?: string;
   agent_token: string;
-  /** The manager WebSocket URL the agent connects to (falls back to `host.manager_ws`). */
+  agent_token_prefix?: string;
+  /** The manager WebSocket URL the freshly-installed agent connects to. */
   manager_ws?: string;
+  status?: string;
 }
 
 /** Body for PUT/PATCH /v1/hosts/:id/images. */

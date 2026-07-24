@@ -84,7 +84,7 @@ function CopyField({ label, value, multiline }: { label: string; value: string; 
  */
 export default function HostCredentialsDialog({ result, onClose }: HostCredentialsDialogProps) {
   const open = result != null;
-  const managerWs = result?.manager_ws ?? result?.host.manager_ws;
+  const managerWs = result?.manager_ws ?? "";
   const runCommand = result ? buildAgentRunCommand(result.agent_token, managerWs) : "";
 
   return (
@@ -94,7 +94,7 @@ export default function HostCredentialsDialog({ result, onClose }: HostCredentia
         {result && (
           <Stack spacing={2.5}>
             <Typography variant="body2" color="text.secondary">
-              <strong>{result.host.name}</strong> is registered. Install the agent below to bring it
+              <strong>{result.name ?? "Host"}</strong> is registered. Install the agent below to bring it
               online.
             </Typography>
 

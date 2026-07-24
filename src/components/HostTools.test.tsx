@@ -65,9 +65,12 @@ const EARNINGS: Earnings = {
 const MINE = { data: HOSTS, earnings: EARNINGS };
 
 const REGISTERED: RegisterHostResponse = {
-  host: { id: "host-2", name: "new-host" },
+  id: "host-2",
+  name: "new-host",
   agent_token: "secret-token-xyz",
+  agent_token_prefix: "wht_live_secr",
   manager_ws: "wss://mgr.example/agent",
+  status: "offline",
 };
 
 beforeEach(() => {
