@@ -18,6 +18,7 @@ import { wisper, WisperError } from "@/lib/wisper/client";
 import { formatPricePerHour } from "@/lib/format";
 import { userdataHint } from "@/lib/os";
 import { isolationLabel } from "@/lib/isolation";
+import { offerHasGpu } from "@/lib/gpu";
 import type {
   CatalogHost,
   CreateLeaseRequest,
@@ -76,11 +77,17 @@ export default function CreateLeaseDialog({
   const [cpu, setCpu] = useState("");
   const [memoryMb, setMemoryMb] = useState("");
   const [diskMb, setDiskMb] = useState("");
+  const [gpus, setGpus] = useState("0");
   const [ttlValue, setTtlValue] = useState("1");
   const [ttlUnit, setTtlUnit] = useState(3600);
   const [userdata, setUserdata] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<WisperError | null>(null);
+
+  // Whether this offer leases GPUs (older API / a CPU-only offer omits max_gpus).
+  const hasGpu = offerHasGpu(image);
+  // The offer's GPU ceiling — the input's max; the API is authoritative on over-ask.
+  const maxGpus = image?.max_gpus ?? 0;
 
   // Isolation levels the selected image can be leased under (older API omits them).
   const isolationLevels = useMemo(() => image?.isolation_levels ?? [], [image]);
@@ -92,6 +99,7 @@ export default function CreateLeaseDialog({
     if (open) {
       setError(null);
       setSubmitting(false);
+      setGpus("0");
       const levels = image?.isolation_levels ?? [];
       const preferred = image?.default_isolation;
       setIsolation(preferred && levels.includes(preferred) ? preferred : levels[0] ?? "");
@@ -118,6 +126,12 @@ export default function CreateLeaseDialog({
     if (cpuVal !== undefined) resources.cpu = cpuVal;
     if (memVal !== undefined) resources.memory_mb = memVal;
     if (diskVal !== undefined) resources.disk_mb = diskVal;
+    // GPUs only when this offer bears them and a positive count is asked. The
+    // ask is sent as typed — an over-ask is NOT pre-clamped; the API rejects it.
+    if (hasGpu) {
+      const gpuVal = optionalPositiveInt(gpus);
+      if (gpuVal !== undefined) resources.gpus = gpuVal;
+    }
 
     const body: CreateLeaseRequest = {
       host_id: host.host_id,
@@ -234,6 +248,18 @@ export default function CreateLeaseDialog({
                 />
               </Stack>
             </Box>
+
+            {hasGpu && (
+              <TextField
+                label="GPUs"
+                type="number"
+                value={gpus}
+                onChange={(e) => setGpus(e.target.value)}
+                slotProps={{ htmlInput: { min: 0, max: maxGpus, step: 1 } }}
+                helperText={`Up to ${maxGpus} GPU${maxGpus === 1 ? "" : "s"} on this offer (0 = none).`}
+                fullWidth
+              />
+            )}
 
             <Stack direction="row" spacing={2}>
               <TextField

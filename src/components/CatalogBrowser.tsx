@@ -27,10 +27,18 @@ import {
   offersAtLeast,
   sortIsolationLevels,
 } from "@/lib/isolation";
+import {
+  catalogAdvertisesGpu,
+  gpuBadgeLabel,
+  gpuClassOptions,
+  gpuHostSummary,
+  offerHasGpu,
+} from "@/lib/gpu";
 import type { CatalogHost, Lease, PricedImage } from "@/lib/wisper/types";
 
 const ALL_REGIONS = "__all__";
 const ANY_ISOLATION = "__any__";
+const ANY_GPU_CLASS = "__any__";
 
 /**
  * Browse GET /v1/catalog: one card per host, each listing its priced images with
@@ -44,21 +52,41 @@ export default function CatalogBrowser() {
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState(ALL_REGIONS);
   const [minIsolation, setMinIsolation] = useState(ANY_ISOLATION);
+  // GPU filters — server-side (forwarded to GET /v1/catalog as query params).
+  const [minGpus, setMinGpus] = useState("");
+  const [gpuClass, setGpuClass] = useState(ANY_GPU_CLASS);
+  // Latches true once any load surfaces GPU capability, so the GPU controls
+  // appear only when the catalog actually has GPUs (a zero-GPU catalog looks
+  // exactly like it did before GPUs) and never vanish once a filter narrows.
+  const [gpuAvailable, setGpuAvailable] = useState(false);
 
   const [dialogHost, setDialogHost] = useState<CatalogHost | null>(null);
   const [dialogImage, setDialogImage] = useState<PricedImage | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [created, setCreated] = useState<Lease | null>(null);
 
+  // The min-GPUs field parsed to a positive integer, or undefined when off.
+  const minGpusValue = useMemo(() => {
+    const n = Number(minGpus.trim());
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
+  }, [minGpus]);
+
+  // Re-fetch whenever a GPU filter changes; the filters ride along as query
+  // params. Region/search/isolation stay client-side (below). Results already
+  // shown stay put during a refetch, so the field keeps focus and doesn't jump.
   useEffect(() => {
     let active = true;
-    setLoading(true);
     setError(null);
     wisper
-      .getCatalog()
+      .getCatalog({
+        min_gpus: minGpusValue,
+        gpu_class: gpuClass !== ANY_GPU_CLASS ? gpuClass : undefined,
+      })
       .then((catalog) => {
         if (!active) return;
-        setHosts(catalog.data ?? []);
+        const data = catalog.data ?? [];
+        setHosts(data);
+        if (catalogAdvertisesGpu(data)) setGpuAvailable(true);
       })
       .catch((err) => {
         if (!active) return;
@@ -70,13 +98,21 @@ export default function CatalogBrowser() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [minGpusValue, gpuClass]);
 
   const regions = useMemo(() => {
     const set = new Set<string>();
     for (const h of hosts ?? []) if (h.region) set.add(h.region);
     return Array.from(set).sort();
   }, [hosts]);
+
+  // GPU class options from the loaded hosts, always keeping the current pick
+  // selectable even if a narrowing filter would otherwise drop it.
+  const gpuClasses = useMemo(() => {
+    const opts = gpuClassOptions(hosts);
+    if (gpuClass !== ANY_GPU_CLASS && !opts.includes(gpuClass)) opts.push(gpuClass);
+    return opts.sort();
+  }, [hosts, gpuClass]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -176,6 +212,35 @@ export default function CatalogBrowser() {
             </MenuItem>
           ))}
         </TextField>
+        {gpuAvailable && (
+          <>
+            <TextField
+              label="Min GPUs"
+              type="number"
+              value={minGpus}
+              onChange={(e) => setMinGpus(e.target.value)}
+              size="small"
+              slotProps={{ htmlInput: { min: 0, step: 1 } }}
+              helperText="0 = any"
+              sx={{ width: 120 }}
+            />
+            <TextField
+              select
+              label="GPU class"
+              value={gpuClass}
+              onChange={(e) => setGpuClass(e.target.value)}
+              size="small"
+              sx={{ minWidth: 180 }}
+            >
+              <MenuItem value={ANY_GPU_CLASS}>Any GPU class</MenuItem>
+              {gpuClasses.map((c) => (
+                <MenuItem key={c} value={c}>
+                  {c}
+                </MenuItem>
+              ))}
+            </TextField>
+          </>
+        )}
       </Stack>
 
       {filtered.length === 0 ? (
@@ -188,7 +253,9 @@ export default function CatalogBrowser() {
             gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", md: "1fr 1fr 1fr" },
           }}
         >
-          {filtered.map(({ host, images }) => (
+          {filtered.map(({ host, images }) => {
+            const gpuSummary = gpuHostSummary(host.gpu_classes, host.gpu_count);
+            return (
             <Card key={host.host_id} variant="outlined">
               <CardContent>
                 <Box
@@ -219,6 +286,16 @@ export default function CatalogBrowser() {
                     {host.region}
                   </Typography>
                 )}
+                {gpuSummary && (
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                    aria-label={`host gpus ${gpuSummary}`}
+                  >
+                    {gpuSummary}
+                  </Typography>
+                )}
                 <Divider sx={{ my: 1.5 }} />
                 <Stack spacing={1.5}>
                   {images.map((image) => (
@@ -233,22 +310,34 @@ export default function CatalogBrowser() {
                               ? formatPricePerHour(image.price_cents_per_min)
                               : "Price on request"}
                           </Typography>
-                          {image.isolation_levels && image.isolation_levels.length > 0 ? (
+                          {(offerHasGpu(image) ||
+                            (image.isolation_levels && image.isolation_levels.length > 0)) ? (
                             <Stack
                               direction="row"
                               spacing={0.5}
                               useFlexGap
                               sx={{ mt: 0.75, flexWrap: "wrap" }}
                             >
-                              {sortIsolationLevels(image.isolation_levels).map((lvl) => (
+                              {offerHasGpu(image) ? (
                                 <Chip
-                                  key={lvl}
                                   size="small"
+                                  color="secondary"
                                   variant="outlined"
-                                  label={isolationLabel(lvl)}
-                                  aria-label={`isolation ${isolationLabel(lvl)}`}
+                                  label={gpuBadgeLabel(host.gpu_classes, image.max_gpus)}
+                                  aria-label={`gpu ${gpuBadgeLabel(host.gpu_classes, image.max_gpus)}`}
                                 />
-                              ))}
+                              ) : null}
+                              {(image.isolation_levels ?? []).length > 0
+                                ? sortIsolationLevels(image.isolation_levels ?? []).map((lvl) => (
+                                    <Chip
+                                      key={lvl}
+                                      size="small"
+                                      variant="outlined"
+                                      label={isolationLabel(lvl)}
+                                      aria-label={`isolation ${isolationLabel(lvl)}`}
+                                    />
+                                  ))
+                                : null}
                             </Stack>
                           ) : null}
                         </Box>
@@ -266,7 +355,8 @@ export default function CatalogBrowser() {
                 </Stack>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </Box>
       )}
 

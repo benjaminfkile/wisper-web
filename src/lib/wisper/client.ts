@@ -3,6 +3,7 @@ import type {
   Billing,
   Catalog,
   CatalogHost,
+  CatalogQuery,
   ConnectResponse,
   CreateApiKeyRequest,
   CreateApiKeyResponse,
@@ -268,12 +269,23 @@ export const wisper = {
   me: () => request<Me>("/v1/me"),
 
   /**
-   * GET /v1/catalog — hosts and their priced images. Resolves to a normalized
-   * {@link Catalog} (`{ data, next_cursor }`), tolerating a bare array or a
-   * legacy `{ hosts }` envelope.
+   * GET /v1/catalog — hosts and their priced images. Accepts the optional
+   * `min_gpus`/`gpu_class` filters (forwarded as query params; omitted when off
+   * so a zero-GPU browse hits the same bare `/v1/catalog` as before). Resolves to
+   * a normalized {@link Catalog} (`{ data, next_cursor }`), tolerating a bare
+   * array or a legacy `{ hosts }` envelope.
    */
-  getCatalog: (): Promise<Catalog> =>
-    request<Catalog | CatalogHost[]>("/v1/catalog").then(normalizeCatalog),
+  getCatalog: (query: CatalogQuery = {}): Promise<Catalog> => {
+    const params = new URLSearchParams();
+    if (query.min_gpus != null && query.min_gpus > 0) {
+      params.set("min_gpus", String(Math.floor(query.min_gpus)));
+    }
+    if (query.gpu_class) params.set("gpu_class", query.gpu_class);
+    const qs = params.toString();
+    return request<Catalog | CatalogHost[]>(`/v1/catalog${qs ? `?${qs}` : ""}`).then(
+      normalizeCatalog,
+    );
+  },
 
   /** POST /v1/leases — create a lease. The API REQUIRES an Idempotency-Key on
    * this call; a fresh key per invocation is correct (each click is a distinct

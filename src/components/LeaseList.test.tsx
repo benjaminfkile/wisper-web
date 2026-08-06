@@ -61,6 +61,22 @@ describe("LeaseList", () => {
     expect(screen.getByText("1h 0m")).toBeInTheDocument();
   });
 
+  it("shows a GPU chip only on leases that leased GPUs", async () => {
+    listLeases.mockResolvedValue([{ ...LEASES[0], resources: { gpus: 2 } }, LEASES[1]]);
+    render(<LeaseList pollMs={0} />);
+
+    // The GPU lease carries a "2 GPU" chip; the other lease carries none.
+    expect(await screen.findByLabelText("gpus 2")).toBeInTheDocument();
+    expect(screen.getAllByLabelText(/^gpus /i)).toHaveLength(1);
+  });
+
+  it("shows no GPU chip when no leases have GPUs", async () => {
+    listLeases.mockResolvedValue(LEASES);
+    render(<LeaseList pollMs={0} />);
+    await screen.findByText("active");
+    expect(screen.queryByLabelText(/^gpus /i)).toBeNull();
+  });
+
   it("shows an empty state with a catalog link when there are no leases", async () => {
     listLeases.mockResolvedValue([]);
     render(<LeaseList pollMs={0} />);

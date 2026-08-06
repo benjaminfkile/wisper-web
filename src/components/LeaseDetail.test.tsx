@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LeaseDetail from "./LeaseDetail";
 import type { Lease } from "@/lib/wisper/types";
@@ -93,6 +93,22 @@ describe("LeaseDetail", () => {
 
     await screen.findByText("active");
     expect(screen.queryByText("Isolation")).not.toBeInTheDocument();
+  });
+
+  it("shows the leased GPU count when the lease has GPUs", async () => {
+    getLease.mockResolvedValue(lease({ resources: { gpus: 2 } }));
+    render(<LeaseDetail leaseId="l1" pollMs={0} />);
+
+    const label = await screen.findByText("GPUs");
+    expect(within(label.parentElement as HTMLElement).getByText("2")).toBeInTheDocument();
+  });
+
+  it("omits the GPU field when no GPUs were leased", async () => {
+    getLease.mockResolvedValue(lease({ resources: { gpus: 0 } }));
+    render(<LeaseDetail leaseId="l1" pollMs={0} />);
+
+    await screen.findByText("active");
+    expect(screen.queryByText("GPUs")).not.toBeInTheDocument();
   });
 
   it("switches the Exec command placeholder for a windows lease", async () => {

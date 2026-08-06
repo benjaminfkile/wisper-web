@@ -154,7 +154,20 @@ export default function LeaseList({ pollMs = 5000 }: LeaseListProps) {
                         variant="outlined"
                       />
                     </TableCell>
-                    <TableCell>{lease.host_image_id}</TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                        <span>{lease.host_image_id}</span>
+                        {(lease.resources?.gpus ?? 0) > 0 && (
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            color="secondary"
+                            label={`${lease.resources?.gpus} GPU`}
+                            aria-label={`gpus ${lease.resources?.gpus}`}
+                          />
+                        )}
+                      </Stack>
+                    </TableCell>
                     <TableCell>{lease.host_id}</TableCell>
                     <TableCell>{lease.network}</TableCell>
                     <TableCell>{formatDuration(lease.ttl_seconds)}</TableCell>

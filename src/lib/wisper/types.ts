@@ -99,6 +99,13 @@ export interface PricedImage {
   isolation_levels?: IsolationLevel[];
   /** The level pre-selected in the create flow; one of `isolation_levels`. */
   default_isolation?: IsolationLevel;
+  /**
+   * Maximum GPUs leasable against this offer. Absent or `0` (older API / a
+   * CPU-only offer) means no GPU: the badge and the create-flow GPU input are
+   * hidden. The create flow caps its input at this value but never pre-clamps an
+   * over-ask — the API is authoritative and rejects it.
+   */
+  max_gpus?: number;
 }
 
 /**
@@ -113,6 +120,14 @@ export interface CatalogHost {
   online?: boolean;
   /** OS the host's containers run, when advertised (older API omits it). */
   os?: HostOs;
+  /**
+   * GPU classes this host advertises (e.g. `["A100", "H100"]`), when present.
+   * Older API builds omit it, so consumers must tolerate `undefined` and show no
+   * GPU presentation. Paired with `gpu_count` for the host's total GPU inventory.
+   */
+  gpu_classes?: string[];
+  /** Total GPUs the host advertises, when present (older API omits it). */
+  gpu_count?: number;
   images: PricedImage[];
 }
 
@@ -127,11 +142,29 @@ export interface Catalog {
   next_cursor?: string;
 }
 
+/**
+ * Query params for `GET /v1/catalog`. Both filters are optional; when absent (or
+ * `min_gpus` ≤ 0 / `gpu_class` blank) the client omits them and the browse hits
+ * the plain endpoint, so a zero-GPU catalog is byte-for-byte the old request.
+ */
+export interface CatalogQuery {
+  /** Only hosts/offers with at least this many GPUs (integer, > 0 to apply). */
+  min_gpus?: number;
+  /** Only hosts advertising this GPU class (e.g. `"A100"`). */
+  gpu_class?: string;
+}
+
 /** Requested compute for a lease. */
 export interface LeaseResources {
   cpu?: number;
   memory_mb?: number;
   disk_mb?: number;
+  /**
+   * GPUs requested for the lease (0..offer `max_gpus`). Defaults to `0`; the
+   * create flow omits it when 0, per the resources-payload convention. Carried
+   * back on a lease's `resources` so views can show the leased GPU count.
+   */
+  gpus?: number;
 }
 
 /** Body for POST /v1/leases. */
@@ -297,6 +330,10 @@ export interface Host {
   created_at?: string;
   /** OS the host's containers run, when advertised. */
   os?: HostOs;
+  /** GPU classes this host advertises (e.g. `["A100"]`), when present. */
+  gpu_classes?: string[];
+  /** Total GPUs the host advertises, when present (older API omits it). */
+  gpu_count?: number;
   /** Host-side priced images, when the build exposes them (optional). */
   images?: HostImage[];
   region?: string;
