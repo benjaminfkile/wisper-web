@@ -218,6 +218,23 @@ describe("wisper client", () => {
     expect(leases[0].id).toBe("l1");
   });
 
+  it("getCatalog forwards min_gpus/gpu_class as query params, omitting them when off", async () => {
+    const spy = stubFetch(() => jsonResponse({ data: [] }));
+
+    await wisper.getCatalog();
+    expect(spy.mock.calls[0][0]).toBe("/wisper/v1/catalog");
+
+    await wisper.getCatalog({ min_gpus: 2, gpu_class: "A100" });
+    const url = new URL(spy.mock.calls[1][0] as string, "http://x");
+    expect(url.pathname).toBe("/wisper/v1/catalog");
+    expect(url.searchParams.get("min_gpus")).toBe("2");
+    expect(url.searchParams.get("gpu_class")).toBe("A100");
+
+    // Zero/blank filters are omitted so a zero-GPU browse hits the bare endpoint.
+    await wisper.getCatalog({ min_gpus: 0, gpu_class: "" });
+    expect(spy.mock.calls[2][0]).toBe("/wisper/v1/catalog");
+  });
+
   it("normalizeApiKeyList accepts a bare array or an envelope", () => {
     const key = {
       id: "k1",

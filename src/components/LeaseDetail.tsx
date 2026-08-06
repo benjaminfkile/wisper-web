@@ -258,6 +258,9 @@ export default function LeaseDetail({ leaseId, pollMs = 5000 }: LeaseDetailProps
                     {lease.isolation && (
                       <Field label="Isolation">{isolationLabel(lease.isolation)}</Field>
                     )}
+                    {(lease.resources?.gpus ?? 0) > 0 && (
+                      <Field label="GPUs">{lease.resources?.gpus}</Field>
+                    )}
                     <Field label="TTL">{formatHms(lease.ttl_seconds)}</Field>
                     <Field label="Created">{formatDateTime(lease.created_at)}</Field>
                     <Field label="Started">{formatDateTime(lease.started_at)}</Field>

@@ -161,6 +161,55 @@ describe("CreateLeaseDialog", () => {
     expect(link).toHaveAttribute("href", "/billing");
   });
 
+  it("omits the GPU input for an offer with no GPUs", () => {
+    renderDialog();
+    expect(screen.queryByLabelText(/GPUs/i)).not.toBeInTheDocument();
+  });
+
+  it("shows a GPU input bounded by the offer's max_gpus", () => {
+    renderDialog({ image: { ...image, max_gpus: 4 } });
+    const field = screen.getByLabelText(/GPUs/i);
+    expect(field).toHaveAttribute("max", "4");
+    expect(field).toHaveAttribute("min", "0");
+  });
+
+  it("sends the requested gpus in resources, and omits them when left at 0", async () => {
+    const user = userEvent.setup();
+    createLease.mockResolvedValue({ id: "lg", status: "pending" });
+    renderDialog({ image: { ...image, max_gpus: 4 } });
+
+    // Left at the default 0 → no gpus in the payload.
+    await user.click(screen.getByRole("button", { name: /create lease/i }));
+    await waitFor(() => expect(createLease).toHaveBeenCalledTimes(1));
+    expect(createLease.mock.calls[0][0].resources?.gpus).toBeUndefined();
+
+    // Ask for 2 → sent through resources.
+    const field = screen.getByLabelText(/GPUs/i);
+    await user.clear(field);
+    await user.type(field, "2");
+    await user.click(screen.getByRole("button", { name: /create lease/i }));
+    await waitFor(() => expect(createLease).toHaveBeenCalledTimes(2));
+    expect(createLease.mock.calls[1][0].resources).toMatchObject({ gpus: 2 });
+  });
+
+  it("surfaces the API validation error on an over-ask without pre-clamping", async () => {
+    const user = userEvent.setup();
+    createLease.mockRejectedValue(
+      new WisperError(400, "invalid_request", "gpus exceeds the offer maximum"),
+    );
+    renderDialog({ image: { ...image, max_gpus: 2 } });
+
+    const field = screen.getByLabelText(/GPUs/i);
+    await user.clear(field);
+    await user.type(field, "5");
+    await user.click(screen.getByRole("button", { name: /create lease/i }));
+
+    // The over-ask is sent as typed (not clamped to 2) and the API's error shows.
+    await waitFor(() => expect(createLease).toHaveBeenCalledTimes(1));
+    expect(createLease.mock.calls[0][0].resources).toMatchObject({ gpus: 5 });
+    expect(await screen.findByText(/gpus exceeds the offer maximum/i)).toBeInTheDocument();
+  });
+
   it("surfaces a host_offline failure with a helpful message", async () => {
     const user = userEvent.setup();
     createLease.mockRejectedValue(new WisperError(409, "host_offline", "host is offline"));

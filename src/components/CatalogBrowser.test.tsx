@@ -171,4 +171,79 @@ describe("CatalogBrowser", () => {
     render(<CatalogBrowser />);
     expect(await screen.findByText(/Failed to load the catalog/i)).toBeInTheDocument();
   });
+
+  // ---- GPU support ----------------------------------------------------------
+
+  const GPU_CATALOG: Catalog = {
+    data: [
+      {
+        host_id: "g1",
+        label: "Nova",
+        region: "us-east",
+        online: true,
+        gpu_classes: ["A100"],
+        gpu_count: 4,
+        images: [
+          { host_image_id: "gi1", image_ref: "cuda-12", price_cents_per_min: 20, max_gpus: 2 },
+          { host_image_id: "gi2", image_ref: "cpu-only", price_cents_per_min: 5 },
+        ],
+      },
+    ],
+  };
+
+  it("renders a GPU badge only on offers with max_gpus > 0", async () => {
+    getCatalog.mockResolvedValue(GPU_CATALOG);
+    render(<CatalogBrowser />);
+
+    // The GPU-bearing offer carries a "A100 × 2" badge (class × offer count).
+    expect(await screen.findByLabelText("gpu A100 × 2")).toBeInTheDocument();
+
+    // Only that offer gets one — the CPU-only offer on the same host does not.
+    // (Match the badge's `class × count` label, not the "GPU class" filter.)
+    expect(screen.getByText("cpu-only")).toBeInTheDocument();
+    expect(screen.getAllByLabelText(/^gpu .*×/i)).toHaveLength(1);
+  });
+
+  it("shows the host's GPU classes and count when present", async () => {
+    getCatalog.mockResolvedValue(GPU_CATALOG);
+    render(<CatalogBrowser />);
+
+    expect(await screen.findByLabelText(/host gpus A100 · 4 GPUs/i)).toBeInTheDocument();
+  });
+
+  it("sends min_gpus and gpu_class to the API when the GPU filters change", async () => {
+    const user = userEvent.setup();
+    getCatalog.mockResolvedValue(GPU_CATALOG);
+    render(<CatalogBrowser />);
+    await screen.findByText("Nova");
+
+    // Initial load hits the bare catalog (no GPU filters).
+    expect(getCatalog).toHaveBeenCalledWith(
+      expect.objectContaining({ min_gpus: undefined, gpu_class: undefined }),
+    );
+
+    await user.type(screen.getByLabelText(/Min GPUs/i), "2");
+    await waitFor(() =>
+      expect(getCatalog).toHaveBeenCalledWith(expect.objectContaining({ min_gpus: 2 })),
+    );
+
+    await user.click(screen.getByLabelText(/GPU class/i));
+    await user.click(await screen.findByRole("option", { name: "A100" }));
+    await waitFor(() =>
+      expect(getCatalog).toHaveBeenCalledWith(expect.objectContaining({ gpu_class: "A100" })),
+    );
+  });
+
+  it("hides the GPU filter controls and badges in a zero-GPU catalog", async () => {
+    getCatalog.mockResolvedValue(CATALOG);
+    render(<CatalogBrowser />);
+    await screen.findByText("Falcon");
+
+    // No GPU filter noise when nothing in the catalog advertises a GPU.
+    expect(screen.queryByLabelText(/Min GPUs/i)).toBeNull();
+    expect(screen.queryByLabelText(/GPU class/i)).toBeNull();
+    // No GPU badges either.
+    expect(screen.queryByLabelText(/^gpu /i)).toBeNull();
+    expect(screen.queryByLabelText(/host gpus/i)).toBeNull();
+  });
 });
