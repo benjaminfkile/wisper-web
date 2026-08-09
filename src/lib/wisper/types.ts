@@ -305,6 +305,12 @@ export interface HostImage {
   networks?: WispNetwork[];
   /** Max lease TTL in seconds. Required by the API on save (positive integer). */
   max_ttl_seconds?: number;
+  /**
+   * Maximum GPUs leasable against this image (0 = CPU-only, the default). The
+   * API validates this against the host's advertised `gpu_count` and rejects an
+   * over-ask, so the editor caps it client-side at the host's capability.
+   */
+  max_gpus?: number;
 }
 
 /**

@@ -90,6 +90,71 @@ describe("HostImagesEditor", () => {
     expect(screen.getAllByLabelText("image name")).toHaveLength(1);
   });
 
+  it("disables the Max GPUs field with a hint when the host has no GPU", async () => {
+    getHostImages.mockResolvedValue(IMAGES);
+    render(<HostImagesEditor host={HOST} onSaved={() => {}} />);
+    const field = await screen.findByLabelText("max gpus for ubuntu-22.04");
+    expect(field).toBeDisabled();
+    expect(screen.getByText("no GPU detected on this host")).toBeInTheDocument();
+  });
+
+  it("enables Max GPUs and shows the detected class when gpu_count > 0", async () => {
+    getHostImages.mockResolvedValue(IMAGES);
+    const gpuHost: Host = {
+      ...HOST,
+      gpu_count: 1,
+      gpu_classes: ["nvidia-geforce-rtx-3050"],
+    };
+    render(<HostImagesEditor host={gpuHost} onSaved={() => {}} />);
+    const field = await screen.findByLabelText("max gpus for ubuntu-22.04");
+    expect(field).not.toBeDisabled();
+    expect(screen.getByText("nvidia-geforce-rtx-3050")).toBeInTheDocument();
+  });
+
+  it("includes max_gpus in the save payload", async () => {
+    const user = userEvent.setup();
+    getHostImages.mockResolvedValue(IMAGES);
+    updateHostImages.mockResolvedValue({ ...HOST });
+    const gpuHost: Host = { ...HOST, gpu_count: 2, gpu_classes: ["A100"] };
+    render(<HostImagesEditor host={gpuHost} onSaved={() => {}} />);
+
+    const field = await screen.findByLabelText("max gpus for ubuntu-22.04");
+    await user.clear(field);
+    await user.type(field, "1");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(updateHostImages).toHaveBeenCalledTimes(1));
+    const [, body] = updateHostImages.mock.calls[0];
+    expect(body.images[0]).toMatchObject({ image_ref: "ubuntu-22.04", max_gpus: 1 });
+  });
+
+  it("blocks saving a max_gpus above the host's capacity", async () => {
+    const user = userEvent.setup();
+    getHostImages.mockResolvedValue(IMAGES);
+    const gpuHost: Host = { ...HOST, gpu_count: 1, gpu_classes: ["A100"] };
+    render(<HostImagesEditor host={gpuHost} onSaved={() => {}} />);
+
+    const field = await screen.findByLabelText("max gpus for ubuntu-22.04");
+    await user.clear(field);
+    await user.type(field, "2");
+
+    expect(screen.getByText("Max 1 on this host")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled();
+  });
+
+  it("shows the 'GPU: up to N' indicator only when max_gpus > 0", async () => {
+    const gpuHost: Host = { ...HOST, gpu_count: 2, gpu_classes: ["A100"] };
+    getHostImages.mockResolvedValue([{ ...IMAGES[0], max_gpus: 2 }]);
+    const { unmount } = render(<HostImagesEditor host={gpuHost} onSaved={() => {}} />);
+    expect(await screen.findByText("GPU: up to 2")).toBeInTheDocument();
+    unmount();
+
+    getHostImages.mockResolvedValue([{ ...IMAGES[0], max_gpus: 0 }]);
+    render(<HostImagesEditor host={gpuHost} onSaved={() => {}} />);
+    await screen.findByDisplayValue("ubuntu-22.04");
+    expect(screen.queryByText(/GPU: up to/)).not.toBeInTheDocument();
+  });
+
   it("surfaces a save error", async () => {
     const user = userEvent.setup();
     const { WisperError } = await import("@/lib/wisper/client");

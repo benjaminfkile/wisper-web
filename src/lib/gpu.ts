@@ -28,6 +28,17 @@ export function gpuBadgeLabel(
 }
 
 /**
+ * Read-side indicator for a GPU-bearing offer — e.g. `"GPU: up to 2"` — used on
+ * the host's own image list where the host's class(es) are shown separately.
+ * Returns `null` when the offer leases no GPU, so callers render nothing.
+ */
+export function gpuOfferLabel(maxGpus: number | undefined): string | null {
+  const count = maxGpus ?? 0;
+  if (count <= 0) return null;
+  return `GPU: up to ${count}`;
+}
+
+/**
  * Host-level GPU inventory summary from `gpu_classes`/`gpu_count` — e.g.
  * `"A100, H100 · 4 GPUs"`, or just the class list / just the count when only one
  * is present. Returns `null` when the host advertises neither, so the host card
