@@ -24,7 +24,7 @@ import LeaseExec from "./LeaseExec";
 import { formatDateTime, formatHms, formatUsd } from "@/lib/format";
 import { osLabel } from "@/lib/os";
 import { isolationLabel } from "@/lib/isolation";
-import { offerCpusLabel, offerMemoryLabel } from "@/lib/offer";
+import { offerCpusLabel, offerMemoryLabel, resolveSize } from "@/lib/offer";
 import { gpuOfferLabel } from "@/lib/gpu";
 import { isTerminalLease, leaseStatusColor } from "@/lib/leaseStatus";
 import {
@@ -169,11 +169,10 @@ export default function LeaseDetail({ leaseId, pollMs = 5000 }: LeaseDetailProps
 
   const lease = sync?.lease ?? null;
   const terminal = lease ? isTerminalLease(lease.status) : false;
-  // Whether the lease reports any provisioned size profile (older API omits all
-  // three, in which case the Size field is hidden rather than showing defaults).
-  const hasProfile =
-    lease != null &&
-    (lease.cpus != null || lease.memory_mb != null || (lease.gpus ?? 0) > 0);
+  // The lease's resolved effective size — always shown so the consumer sees what
+  // they leased. A pre-resolution lease (no effective/raw size) reads
+  // "unspecified" gracefully rather than being hidden.
+  const size = lease ? resolveSize(lease) : null;
   const uptime = lease ? leaseUptimeSeconds(lease, nowMs) : 0;
   const ttlRemaining = sync
     ? terminal
@@ -265,11 +264,11 @@ export default function LeaseDetail({ leaseId, pollMs = 5000 }: LeaseDetailProps
                     {lease.isolation && (
                       <Field label="Isolation">{isolationLabel(lease.isolation)}</Field>
                     )}
-                    {hasProfile && (
+                    {size && (
                       <Field label="Size">
                         {[
-                          offerCpusLabel(lease.cpus),
-                          offerMemoryLabel(lease.memory_mb),
+                          offerCpusLabel(size.cpus, size.source),
+                          offerMemoryLabel(size.memoryMb, size.source),
                           gpuOfferLabel(lease.gpus),
                         ]
                           .filter(Boolean)

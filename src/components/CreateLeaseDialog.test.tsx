@@ -149,11 +149,29 @@ describe("CreateLeaseDialog", () => {
     expect(screen.getByLabelText("gpus A100 × 2")).toBeInTheDocument();
   });
 
-  it("shows 'host default' size chips and no GPU chip for a bare offer", () => {
+  it("shows 'unspecified' size chips and no GPU chip for a bare offer", () => {
     renderDialog();
-    expect(screen.getByLabelText("vcpus vCPU: host default")).toBeInTheDocument();
-    expect(screen.getByLabelText("ram RAM: host default")).toBeInTheDocument();
+    // A bare offer carries no resolvable size — "unspecified", never a bare
+    // "host default" with no number.
+    expect(screen.getByLabelText("vcpus vCPU: unspecified")).toBeInTheDocument();
+    expect(screen.getByLabelText("ram RAM: unspecified")).toBeInTheDocument();
     expect(screen.queryByLabelText(/^gpus /i)).not.toBeInTheDocument();
+  });
+
+  it("annotates a host-cap resolved size, keeping the numbers", () => {
+    // The offer defaulted its compute; the API resolved the host's cap.
+    renderDialog({
+      image: {
+        ...image,
+        cpus: null,
+        memory_mb: null,
+        effective_cpus: 4,
+        effective_memory_mb: 4096,
+        resources_source: "host_cap",
+      },
+    });
+    expect(screen.getByLabelText("vcpus 4 vCPU (host cap)")).toBeInTheDocument();
+    expect(screen.getByLabelText("ram 4 GB (host cap)")).toBeInTheDocument();
   });
 
   it("keeps the POSIX userdata hint for a linux host", () => {

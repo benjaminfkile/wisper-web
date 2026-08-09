@@ -23,7 +23,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import { wisper, WisperError } from "@/lib/wisper/client";
 import { formatDateTime, formatDuration, formatUsd } from "@/lib/format";
 import { isTerminalLease, leaseStatusColor } from "@/lib/leaseStatus";
-import { offerCpusLabel, offerMemoryLabel } from "@/lib/offer";
+import { offerCpusLabel, offerMemoryLabel, resolveSize } from "@/lib/offer";
 import type { Lease } from "@/lib/wisper/types";
 
 interface LeaseListProps {
@@ -145,6 +145,9 @@ export default function LeaseList({ pollMs = 5000 }: LeaseListProps) {
             <TableBody>
               {leases.map((lease) => {
                 const terminal = isTerminalLease(lease.status);
+                // Resolved effective size — always shown so the row reflects what
+                // was leased; a pre-resolution lease reads "unspecified".
+                const size = resolveSize(lease);
                 return (
                   <TableRow key={lease.id} hover>
                     <TableCell>
@@ -163,24 +166,21 @@ export default function LeaseList({ pollMs = 5000 }: LeaseListProps) {
                         sx={{ alignItems: "center", flexWrap: "wrap" }}
                       >
                         <span>{lease.host_image_id}</span>
-                        {/* Provisioned size profile — vCPU/RAM shown only when the
-                            lease sizes them (a host-default dimension is omitted). */}
-                        {lease.cpus != null && lease.cpus > 0 && (
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            label={offerCpusLabel(lease.cpus)}
-                            aria-label={`vcpus ${lease.cpus}`}
-                          />
-                        )}
-                        {lease.memory_mb != null && lease.memory_mb > 0 && (
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            label={offerMemoryLabel(lease.memory_mb)}
-                            aria-label={`ram ${offerMemoryLabel(lease.memory_mb)}`}
-                          />
-                        )}
+                        {/* Resolved effective size — vCPU/RAM always shown (the
+                            resolved number, annotated when host-derived, or
+                            "unspecified" for a pre-resolution lease). */}
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={offerCpusLabel(size.cpus, size.source)}
+                          aria-label={`vcpus ${offerCpusLabel(size.cpus, size.source)}`}
+                        />
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={offerMemoryLabel(size.memoryMb, size.source)}
+                          aria-label={`ram ${offerMemoryLabel(size.memoryMb, size.source)}`}
+                        />
                         {(lease.gpus ?? 0) > 0 && (
                           <Chip
                             size="small"
