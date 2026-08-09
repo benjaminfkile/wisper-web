@@ -311,9 +311,9 @@ describe("wisper client", () => {
 
   describe("shellSocketUrl", () => {
     it("uses the API origin (wss, path prefix, ticket) when NEXT_PUBLIC_WISPER_API_ORIGIN is set", () => {
-      vi.stubEnv("NEXT_PUBLIC_WISPER_API_ORIGIN", "https://api.benkile.com/wisper-api-dev");
+      vi.stubEnv("NEXT_PUBLIC_WISPER_API_ORIGIN", "https://api.example.com/wisper");
       expect(shellSocketUrl("lease 1", "tk/t?a")).toBe(
-        "wss://api.benkile.com/wisper-api-dev/v1/leases/lease%201/shell?ticket=tk%2Ft%3Fa",
+        "wss://api.example.com/wisper/v1/leases/lease%201/shell?ticket=tk%2Ft%3Fa",
       );
     });
 

@@ -17,7 +17,7 @@ The app calls same-origin `/wisper/*`; Next rewrites that to the Wisper API (see
 
 ```sh
 cp .env.example .env.local
-# set WISPER_API_URL=https://<your-wisper-host>   (defaults to http://localhost:8080)
+# set NEXT_PUBLIC_WISPER_API_ORIGIN=https://<your-wisper-host>   (defaults to http://localhost:8080)
 ```
 
 ### Lease console WebSocket (`NEXT_PUBLIC_WISPER_API_ORIGIN`)
@@ -30,7 +30,7 @@ console WS must connect **directly** to the API origin:
 
 ```sh
 # .env.local (Vercel / any deploy where the app is NOT a long-running Node server)
-NEXT_PUBLIC_WISPER_API_ORIGIN=https://api.benkile.com/wisper-api-dev
+NEXT_PUBLIC_WISPER_API_ORIGIN=https://<wisper-host>   # preserve any path prefix
 ```
 
 `shellSocketUrl()` builds the WS URL from this origin (`https`→`wss`, `http`→`ws`,
@@ -48,7 +48,7 @@ the `NEXT_PUBLIC_COGNITO_*` variables unset and point the proxy at your local AP
 
 ```sh
 # .env.local
-WISPER_API_URL=http://127.0.0.1:8090
+NEXT_PUBLIC_WISPER_API_ORIGIN=http://127.0.0.1:8090
 # (no NEXT_PUBLIC_COGNITO_* vars)
 ```
 
