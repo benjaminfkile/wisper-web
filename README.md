@@ -20,6 +20,27 @@ cp .env.example .env.local
 # set WISPER_API_URL=https://<your-wisper-host>   (defaults to http://localhost:8080)
 ```
 
+### Lease console WebSocket (`NEXT_PUBLIC_WISPER_API_ORIGIN`)
+
+The lease **console** opens a WebSocket to the Wisper API. Everything else goes
+through the same-origin `/wisper` rewrite, but **Vercel cannot proxy a WebSocket
+upgrade through Next `rewrites()`** — a same-origin `wss://<app>/wisper/.../shell`
+handshake there fails with `Unexpected response code 400`. So on Vercel the
+console WS must connect **directly** to the API origin:
+
+```sh
+# .env.local (Vercel / any deploy where the app is NOT a long-running Node server)
+NEXT_PUBLIC_WISPER_API_ORIGIN=https://api.benkile.com/wisper-api-dev
+```
+
+`shellSocketUrl()` builds the WS URL from this origin (`https`→`wss`, `http`→`ws`,
+preserving the path prefix) and appends `/v1/leases/{id}/shell?ticket=...`. The
+one-time ticket in the query string is the auth, so a cross-origin WS needs no
+cookie/CORS, and the Wisper gateway passes the upgrade through (YARP WebSocket
+passthrough). **When unset**, the console falls back to the same-origin `/wisper`
+WS — correct for local `next dev`/`next start`, where the Node server proxies
+WebSockets fine. Regular HTTP requests always use the same-origin rewrite.
+
 ## Local development against wisper-api
 
 To run the app fully against a **local wisper-api with no Cognito configured**, leave

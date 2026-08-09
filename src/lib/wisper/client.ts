@@ -403,14 +403,37 @@ export const wisper = {
 };
 
 /**
- * Build the same-origin WebSocket URL for a lease shell, carrying a one-time
- * ticket minted by `shellTicket`. Used by the console (xterm) milestone.
+ * Build the WebSocket URL for a lease shell, carrying a one-time ticket minted
+ * by `shellTicket` (the ticket in the query string is the auth, so a cross-origin
+ * WS needs no cookie/CORS).
+ *
+ * When `NEXT_PUBLIC_WISPER_API_ORIGIN` is set, connect DIRECTLY to the Wisper API
+ * origin (`https://…` → `wss://…`, `http://…` → `ws://…`, preserving its path
+ * prefix). This is required on Vercel, which serves the app but CANNOT proxy a
+ * WebSocket upgrade through Next `rewrites()` — a same-origin `/wisper/*` WS
+ * handshake there returns 400. Regular HTTP still uses the same-origin `/wisper`
+ * rewrite (no CORS); only this WS path takes the direct origin.
+ *
+ * When the env is UNSET, fall back to the same-origin `/wisper` URL so local
+ * `next dev`/`next start` (a real Node server that proxies WS fine) is unchanged.
  */
 export function shellSocketUrl(leaseId: string, ticket: string): string {
+  const suffix = `/v1/leases/${encodeURIComponent(leaseId)}/shell?ticket=${encodeURIComponent(
+    ticket,
+  )}`;
+
+  const origin = process.env.NEXT_PUBLIC_WISPER_API_ORIGIN;
+  if (origin) {
+    // Direct cross-origin WS to the API: swap the http(s) scheme for ws(s) and
+    // keep the origin's path prefix (e.g. `/wisper-api-dev`), trimming any
+    // trailing slash so we don't produce a `//v1` path.
+    const base = origin.replace(/^http(s?):\/\//i, (_m, s) => `ws${s}://`).replace(/\/+$/, "");
+    return `${base}${suffix}`;
+  }
+
+  // Same-origin fallback: Next rewrites `/wisper/*` to the API (HTTP + WS locally).
   const proto =
     typeof window !== "undefined" && window.location.protocol === "https:" ? "wss" : "ws";
   const host = typeof window !== "undefined" ? window.location.host : "";
-  return `${proto}://${host}${BASE}/v1/leases/${encodeURIComponent(
-    leaseId,
-  )}/shell?ticket=${encodeURIComponent(ticket)}`;
+  return `${proto}://${host}${BASE}${suffix}`;
 }

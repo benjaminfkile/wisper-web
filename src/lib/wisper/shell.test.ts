@@ -137,6 +137,22 @@ describe("ShellSocket", () => {
     expect(statuses.at(-1)).toEqual(["closed", "bye"]);
   });
 
+  it("reports 'handshake failed' (not 'connection error') when the WS errors before opening", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { ws, statuses } = await makeConnected();
+    ws.onerror?.(); // upgrade handshake rejected (e.g. 400) — never opened
+    expect(statuses.at(-1)).toEqual(["error", "handshake failed"]);
+    expect(err).toHaveBeenCalled();
+  });
+
+  it("reports 'connection error' when the WS errors after opening", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { ws, statuses } = await makeConnected();
+    ws.fireOpen();
+    ws.onerror?.();
+    expect(statuses.at(-1)).toEqual(["error", "connection error"]);
+  });
+
   it("suppresses status callbacks for a user-initiated close", async () => {
     const { socket, ws, statuses } = await makeConnected();
     ws.fireOpen();
