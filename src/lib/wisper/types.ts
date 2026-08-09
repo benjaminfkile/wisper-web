@@ -32,6 +32,18 @@
 // catalog/host payloads gain a per-host `at_capacity` (bool) plus optional
 // `active_leases`/`max_leases` ints. All new fields are optional — an older API
 // that omits them degrades to the prior behavior (no capacity badge, no profile).
+//
+// 2026-08-09 (resolved effective sizes): the API now RESOLVES an offer's/lease's
+// effective compute so a consumer never sees a bare "host default" with no
+// number. Catalog offers and lease responses gain `effective_cpus` (int|null),
+// `effective_memory_mb` (int|null), and `resources_source` — a ResourcesSource
+// marker (`"offer"` = from the offer's own profile, `"host_cap"` = the offer
+// defaulted and this is the host's cap, `"unknown"` = unresolvable). The UI
+// renders the effective numbers, subtly flags a `"host_cap"` value, and only
+// falls back to "unspecified" for a genuine `"unknown"`. All three are optional:
+// an older API that omits them degrades to the raw `cpus`/`memory_mb` (numbered
+// when present, "unspecified" when it carried no size), preserving the tolerant-
+// normalizer discipline.
 // ============================================================================
 
 /** Liveness (GET /healthz). */
@@ -94,6 +106,16 @@ export type IsolationLevel = "shared" | "sandboxed" | "vm";
 export type HostOs = "linux" | "windows";
 
 /**
+ * Where an offer's/lease's EFFECTIVE size came from, resolved server-side:
+ * `"offer"` — the offer's own `cpus`/`memory_mb` profile; `"host_cap"` — the
+ * offer left a dimension to the host and the effective number is the host's cap
+ * (annotate, don't hide the number); `"unknown"` — unresolvable, the only case
+ * that falls back to an "unspecified" label. Absent on an older API that hasn't
+ * resolved effective values, so consumers must tolerate `undefined`.
+ */
+export type ResourcesSource = "offer" | "host_cap" | "unknown";
+
+/**
  * A priced image offered by a catalog host (item of `GET /v1/catalog`'s `data`).
  * Prices are in CENTS PER MINUTE. `image_ref` is the pullable image reference
  * (also the display name), `host_image_id` the id a lease is created against.
@@ -132,6 +154,17 @@ export interface PricedImage {
    * GPU input are hidden. REPLACES the old `max_gpus` field everywhere.
    */
   gpus?: number;
+  /**
+   * Server-resolved EFFECTIVE size of this offer — the compute a lease actually
+   * gets. When `cpus`/`memory_mb` are `null` (host-defaulted), these carry the
+   * resolved host-cap numbers so the chip shows a real value, not a bare label.
+   * Read WITH `resources_source`: `"host_cap"` means annotate the number. Absent
+   * on an older API, in which case the raw `cpus`/`memory_mb` are used as-is.
+   */
+  effective_cpus?: number | null;
+  effective_memory_mb?: number | null;
+  /** Where {@link PricedImage.effective_cpus}/`effective_memory_mb` came from. */
+  resources_source?: ResourcesSource;
 }
 
 /**
@@ -223,6 +256,17 @@ export interface Lease {
   cpus?: number | null;
   memory_mb?: number | null;
   gpus?: number;
+  /**
+   * Server-resolved EFFECTIVE size of this lease — the compute it actually runs.
+   * When `cpus`/`memory_mb` were host-defaulted, these carry the resolved
+   * host-cap numbers, read together with `resources_source` (`"host_cap"` =
+   * annotate the number). Absent on a lease created before this change, which
+   * degrades to the raw `cpus`/`memory_mb` (or "unspecified" when it had none).
+   */
+  effective_cpus?: number | null;
+  effective_memory_mb?: number | null;
+  /** Where {@link Lease.effective_cpus}/`effective_memory_mb` came from. */
+  resources_source?: ResourcesSource;
   /** OS of the leased container, when known (older API omits it). */
   os?: HostOs;
   /** Isolation level this lease runs under, when reported (older API omits it). */

@@ -192,9 +192,11 @@ export function normalizeApiKeyList(
  * Normalize a GET /v1/catalog response into a {@link Catalog}. The real endpoint
  * returns `{ data, next_cursor }`; this also tolerates a bare array and the
  * legacy `{ hosts }` envelope so the browser always receives a clean host list.
- * Per-host optional fields (size profile, GPU inventory, and the newer
- * `at_capacity`/`active_leases`/`max_leases` capacity fields) ride along on each
- * host as-is — absent fields stay `undefined`, so an older API degrades cleanly.
+ * Per-host optional fields (size profile, GPU inventory, the
+ * `at_capacity`/`active_leases`/`max_leases` capacity fields, and each offer's
+ * resolved `effective_cpus`/`effective_memory_mb`/`resources_source`) ride along
+ * on each host/offer as-is — absent fields stay `undefined`, so an older API
+ * that hasn't resolved effective sizes degrades cleanly to the raw profile.
  */
 export function normalizeCatalog(
   body:
@@ -244,7 +246,10 @@ export function normalizeMyHosts(
 /**
  * Normalize a GET /v1/leases response into a plain `Lease[]`. The real endpoint
  * returns `{ data, next_cursor }`; this also tolerates a bare array (legacy)
- * so the lease list never crashes on `.map` of a non-array.
+ * so the lease list never crashes on `.map` of a non-array. Each lease's optional
+ * resolved-size fields (`effective_cpus`/`effective_memory_mb`/`resources_source`)
+ * ride along as-is — absent on a pre-resolution lease, which the views render as
+ * "unspecified".
  */
 export function normalizeLeaseList(
   body: Lease[] | { data?: Lease[]; next_cursor?: string } | null | undefined,

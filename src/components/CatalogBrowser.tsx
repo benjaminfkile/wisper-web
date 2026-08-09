@@ -35,7 +35,7 @@ import {
   gpuHostSummary,
   offerHasGpu,
 } from "@/lib/gpu";
-import { offerCpusLabel, offerMemoryLabel } from "@/lib/offer";
+import { offerCpusLabel, offerMemoryLabel, resolveSize } from "@/lib/offer";
 import { hostAtCapacity, hostLeaseUsageLabel } from "@/lib/capacity";
 import type { CatalogHost, Lease, PricedImage } from "@/lib/wisper/types";
 
@@ -324,7 +324,13 @@ export default function CatalogBrowser() {
                 )}
                 <Divider sx={{ my: 1.5 }} />
                 <Stack spacing={1.5}>
-                  {images.map((image) => (
+                  {images.map((image) => {
+                    // Resolve the EFFECTIVE size the lease actually gets, plus
+                    // where it came from — the chips render the resolved number
+                    // (annotated "(host cap)" when host-derived), never a bare
+                    // "host default"; only a genuine unknown reads "unspecified".
+                    const size = resolveSize(image);
+                    return (
                     <Box key={image.host_image_id}>
                       <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
                         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
@@ -343,18 +349,18 @@ export default function CatalogBrowser() {
                             sx={{ mt: 0.75, flexWrap: "wrap" }}
                           >
                             {/* Size profile — the price now reads as a price FOR
-                                something. "host default" when cpus/memory is null. */}
+                                something, with the resolved effective numbers. */}
                             <Chip
                               size="small"
                               variant="outlined"
-                              label={offerCpusLabel(image.cpus)}
-                              aria-label={`offer vcpus ${offerCpusLabel(image.cpus)}`}
+                              label={offerCpusLabel(size.cpus, size.source)}
+                              aria-label={`offer vcpus ${offerCpusLabel(size.cpus, size.source)}`}
                             />
                             <Chip
                               size="small"
                               variant="outlined"
-                              label={offerMemoryLabel(image.memory_mb)}
-                              aria-label={`offer ram ${offerMemoryLabel(image.memory_mb)}`}
+                              label={offerMemoryLabel(size.memoryMb, size.source)}
+                              aria-label={`offer ram ${offerMemoryLabel(size.memoryMb, size.source)}`}
                             />
                             {offerHasGpu(image) ? (
                               <Chip
@@ -396,7 +402,8 @@ export default function CatalogBrowser() {
                         </Tooltip>
                       </Stack>
                     </Box>
-                  ))}
+                    );
+                  })}
                 </Stack>
               </CardContent>
             </Card>

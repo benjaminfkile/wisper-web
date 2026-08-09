@@ -215,13 +215,78 @@ describe("CatalogBrowser", () => {
     getCatalog.mockResolvedValue(GPU_CATALOG);
     render(<CatalogBrowser />);
 
-    // The sized offer shows its vCPUs and RAM (16384 MB -> 16 GB) as chips.
+    // The sized offer shows its vCPUs and RAM (16384 MB -> 16 GB) as chips. With
+    // no effective/source fields (older payload) the raw size is shown as-is.
     expect(await screen.findByLabelText("offer vcpus 8 vCPU")).toBeInTheDocument();
     expect(screen.getByLabelText("offer ram 16 GB")).toBeInTheDocument();
 
-    // The CPU-only offer omits the profile, so both dimensions read "host default".
-    expect(screen.getByLabelText("offer vcpus vCPU: host default")).toBeInTheDocument();
-    expect(screen.getByLabelText("offer ram RAM: host default")).toBeInTheDocument();
+    // The CPU-only offer carries no resolvable size, so both dimensions read
+    // "unspecified" — never a bare "host default" with no number.
+    expect(screen.getByLabelText("offer vcpus vCPU: unspecified")).toBeInTheDocument();
+    expect(screen.getByLabelText("offer ram RAM: unspecified")).toBeInTheDocument();
+  });
+
+  // ---- Resolved effective sizes --------------------------------------------
+
+  const RESOLVED_CATALOG: Catalog = {
+    data: [
+      {
+        host_id: "r1",
+        label: "Resolver",
+        region: "us-east",
+        online: true,
+        images: [
+          // Effective values come straight from the offer's own profile.
+          {
+            host_image_id: "ro",
+            image_ref: "sized-offer",
+            price_cents_per_min: 5,
+            cpus: 2,
+            memory_mb: 2048,
+            effective_cpus: 2,
+            effective_memory_mb: 2048,
+            resources_source: "offer",
+          },
+          // Host-defaulted: the resolved numbers are the host's cap, annotated.
+          {
+            host_image_id: "rc",
+            image_ref: "capped-offer",
+            price_cents_per_min: 5,
+            cpus: null,
+            memory_mb: null,
+            effective_cpus: 4,
+            effective_memory_mb: 4096,
+            resources_source: "host_cap",
+          },
+          // Genuinely unresolvable — falls back to "unspecified".
+          {
+            host_image_id: "ru",
+            image_ref: "unknown-offer",
+            price_cents_per_min: 5,
+            effective_cpus: null,
+            effective_memory_mb: null,
+            resources_source: "unknown",
+          },
+        ],
+      },
+    ],
+  };
+
+  it("renders resolved effective sizes: plain, host-cap-annotated, and unspecified", async () => {
+    getCatalog.mockResolvedValue(RESOLVED_CATALOG);
+    render(<CatalogBrowser />);
+
+    // "offer" source → the number, no annotation.
+    expect(await screen.findByLabelText("offer vcpus 2 vCPU")).toBeInTheDocument();
+    expect(screen.getByLabelText("offer ram 2 GB")).toBeInTheDocument();
+
+    // "host_cap" source → the resolved number kept, annotated "(host cap)".
+    expect(screen.getByLabelText("offer vcpus 4 vCPU (host cap)")).toBeInTheDocument();
+    expect(screen.getByLabelText("offer ram 4 GB (host cap)")).toBeInTheDocument();
+
+    // "unknown" source → the only fallback to "unspecified".
+    expect(screen.getByLabelText("offer vcpus vCPU: unspecified")).toBeInTheDocument();
+    expect(screen.getByLabelText("offer ram RAM: unspecified")).toBeInTheDocument();
   });
 
   it("shows the host's GPU classes and count when present", async () => {

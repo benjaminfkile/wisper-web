@@ -70,14 +70,35 @@ describe("LeaseList", () => {
     expect(screen.getAllByLabelText(/^gpus /i)).toHaveLength(1);
   });
 
-  it("shows the provisioned vCPU/RAM profile chips when the lease sizes them", async () => {
+  it("always shows resolved vCPU/RAM chips — the number when sized, else 'unspecified'", async () => {
     listLeases.mockResolvedValue([{ ...LEASES[0], cpus: 4, memory_mb: 8192 }, LEASES[1]]);
     render(<LeaseList pollMs={0} />);
 
-    expect(await screen.findByLabelText("vcpus 4")).toBeInTheDocument();
+    // The sized lease shows its resolved numbers.
+    expect(await screen.findByLabelText("vcpus 4 vCPU")).toBeInTheDocument();
     expect(screen.getByLabelText("ram 8 GB")).toBeInTheDocument();
-    // Only the sized lease gets them.
-    expect(screen.getAllByLabelText(/^vcpus /i)).toHaveLength(1);
+    // The other (pre-resolution) lease reads "unspecified" rather than being blank.
+    expect(screen.getByLabelText("vcpus vCPU: unspecified")).toBeInTheDocument();
+    expect(screen.getByLabelText("ram RAM: unspecified")).toBeInTheDocument();
+    // Both rows carry a vCPU chip now (always shown).
+    expect(screen.getAllByLabelText(/^vcpus /i)).toHaveLength(2);
+  });
+
+  it("annotates a host-cap resolved lease size, keeping the number", async () => {
+    listLeases.mockResolvedValue([
+      {
+        ...LEASES[0],
+        cpus: null,
+        memory_mb: null,
+        effective_cpus: 4,
+        effective_memory_mb: 4096,
+        resources_source: "host_cap",
+      },
+    ]);
+    render(<LeaseList pollMs={0} />);
+
+    expect(await screen.findByLabelText("vcpus 4 vCPU (host cap)")).toBeInTheDocument();
+    expect(screen.getByLabelText("ram 4 GB (host cap)")).toBeInTheDocument();
   });
 
   it("shows no GPU chip when no leases have GPUs", async () => {

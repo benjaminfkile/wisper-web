@@ -20,7 +20,7 @@ import { formatPricePerHour } from "@/lib/format";
 import { userdataHint } from "@/lib/os";
 import { isolationLabel } from "@/lib/isolation";
 import { gpuBadgeLabel, offerHasGpu } from "@/lib/gpu";
-import { offerCpusLabel, offerMemoryLabel } from "@/lib/offer";
+import { offerCpusLabel, offerMemoryLabel, resolveSize } from "@/lib/offer";
 import type {
   CatalogHost,
   CreateLeaseRequest,
@@ -125,6 +125,10 @@ export default function CreateLeaseDialog({
 
   const price = image?.price_cents_per_min;
   const osHint = userdataHint(host?.os);
+  // The offer's resolved EFFECTIVE size — shown read-only as the lease provisions
+  // exactly this. Chips render the resolved number (annotated when host-derived),
+  // never a bare "host default"; a genuine unknown reads "unspecified".
+  const size = image ? resolveSize(image) : null;
 
   async function handleSubmit() {
     if (!host || !image || ttlSeconds <= 0) return;
@@ -230,19 +234,19 @@ export default function CreateLeaseDialog({
                 useFlexGap
                 sx={{ mt: 0.5, flexWrap: "wrap" }}
               >
-                {/* The offer's FIXED profile, read-only — a lease provisions exactly
-                    this. "host default" when a dimension is left to the host. */}
+                {/* The offer's FIXED profile, read-only — a lease provisions
+                    exactly this, shown with its resolved effective numbers. */}
                 <Chip
                   size="small"
                   variant="outlined"
-                  label={offerCpusLabel(image.cpus)}
-                  aria-label={`vcpus ${offerCpusLabel(image.cpus)}`}
+                  label={offerCpusLabel(size?.cpus, size?.source)}
+                  aria-label={`vcpus ${offerCpusLabel(size?.cpus, size?.source)}`}
                 />
                 <Chip
                   size="small"
                   variant="outlined"
-                  label={offerMemoryLabel(image.memory_mb)}
-                  aria-label={`ram ${offerMemoryLabel(image.memory_mb)}`}
+                  label={offerMemoryLabel(size?.memoryMb, size?.source)}
+                  aria-label={`ram ${offerMemoryLabel(size?.memoryMb, size?.source)}`}
                 />
                 {offerHasGpu(image) ? (
                   <Chip

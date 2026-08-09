@@ -105,23 +105,44 @@ describe("LeaseDetail", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders 'host default' for a size dimension the offer left to the host", async () => {
+  it("renders 'unspecified' for a size dimension that couldn't be resolved", async () => {
     getLease.mockResolvedValue(lease({ cpus: null, memory_mb: 8192, gpus: 0 }));
     render(<LeaseDetail leaseId="l1" pollMs={0} />);
 
     const label = await screen.findByText("Size");
-    // vCPU host-defaulted, RAM sized, no GPU segment.
+    // vCPU unresolvable, RAM sized, no GPU segment.
     expect(
-      within(label.parentElement as HTMLElement).getByText("vCPU: host default · 8 GB"),
+      within(label.parentElement as HTMLElement).getByText("vCPU: unspecified · 8 GB"),
     ).toBeInTheDocument();
   });
 
-  it("omits the Size field when the lease reports no profile (older API)", async () => {
+  it("annotates a host-cap resolved size, keeping the numbers", async () => {
+    getLease.mockResolvedValue(
+      lease({
+        cpus: null,
+        memory_mb: null,
+        effective_cpus: 4,
+        effective_memory_mb: 4096,
+        resources_source: "host_cap",
+        gpus: 0,
+      }),
+    );
+    render(<LeaseDetail leaseId="l1" pollMs={0} />);
+
+    const label = await screen.findByText("Size");
+    expect(
+      within(label.parentElement as HTMLElement).getByText("4 vCPU (host cap) · 4 GB (host cap)"),
+    ).toBeInTheDocument();
+  });
+
+  it("always shows the Size field, reading 'unspecified' for a pre-resolution lease", async () => {
     getLease.mockResolvedValue(lease({ cpus: undefined, memory_mb: undefined, gpus: undefined }));
     render(<LeaseDetail leaseId="l1" pollMs={0} />);
 
-    await screen.findByText("active");
-    expect(screen.queryByText("Size")).not.toBeInTheDocument();
+    const label = await screen.findByText("Size");
+    expect(
+      within(label.parentElement as HTMLElement).getByText("vCPU: unspecified · RAM: unspecified"),
+    ).toBeInTheDocument();
   });
 
   it("switches the Exec command placeholder for a windows lease", async () => {
