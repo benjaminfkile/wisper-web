@@ -4,6 +4,7 @@ import {
   gpuBadgeLabel,
   gpuClassOptions,
   gpuHostSummary,
+  gpuOfferLabel,
   offerHasGpu,
 } from "./gpu";
 import type { CatalogHost } from "./wisper/types";
@@ -24,6 +25,13 @@ describe("gpu helpers", () => {
     expect(gpuBadgeLabel([], 4)).toBe("GPU × 4");
     expect(gpuBadgeLabel(["A100"], 0)).toBeNull();
     expect(gpuBadgeLabel(["A100"], undefined)).toBeNull();
+  });
+
+  it("gpuOfferLabel reads 'GPU: up to N', or null when zero/absent", () => {
+    expect(gpuOfferLabel(2)).toBe("GPU: up to 2");
+    expect(gpuOfferLabel(1)).toBe("GPU: up to 1");
+    expect(gpuOfferLabel(0)).toBeNull();
+    expect(gpuOfferLabel(undefined)).toBeNull();
   });
 
   it("gpuHostSummary renders class list and/or count, or null when neither", () => {

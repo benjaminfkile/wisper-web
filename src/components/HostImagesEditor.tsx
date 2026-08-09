@@ -24,6 +24,7 @@ import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { wisper, WisperError } from "@/lib/wisper/client";
 import { centsPerMinToPerHour, perHourToCentsPerMin } from "@/lib/format";
+import { gpuOfferLabel } from "@/lib/gpu";
 import type { Host, HostImage, WispNetwork } from "@/lib/wisper/types";
 
 interface HostImagesEditorProps {
@@ -48,6 +49,8 @@ interface Row {
   ttlMinutes: string;
   /** Networks offered for this image; must be a subset the host advertises. */
   networks: WispNetwork[];
+  /** Max GPUs leasable against this image, entered as text ("" / "0" = none). */
+  maxGpus: string;
   enabled: boolean;
 }
 
@@ -66,6 +69,7 @@ function toRow(image: HostImage): Row {
       ? String(Math.max(1, Math.round(image.max_ttl_seconds / 60)))
       : DEFAULT_TTL_MINUTES,
     networks: image.networks?.length ? image.networks : DEFAULT_NETWORKS,
+    maxGpus: String(image.max_gpus ?? 0),
     enabled: image.enabled ?? true,
   };
 }
@@ -73,6 +77,13 @@ function toRow(image: HostImage): Row {
 function positiveInt(value: string): number | null {
   const n = Number(value);
   return Number.isFinite(n) && Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/** Parse a GPU count field: blank counts as 0; otherwise a non-negative int. */
+function nonNegativeInt(value: string): number | null {
+  if (!value.trim()) return 0;
+  const n = Number(value);
+  return Number.isFinite(n) && Number.isInteger(n) && n >= 0 ? n : null;
 }
 
 /**
@@ -129,16 +140,31 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
         pricePerHour: "",
         ttlMinutes: DEFAULT_TTL_MINUTES,
         networks: DEFAULT_NETWORKS,
+        maxGpus: "0",
         enabled: true,
       },
     ]);
     setSaved(false);
   }
 
+  // GPUs the host advertises; 0 (or absent) means the field is disabled entirely.
+  const gpuCapacity = host.gpu_count ?? 0;
+  const gpuClasses = (host.gpu_classes ?? []).filter(Boolean);
+
+  /** Per-row GPU error message, or null when the value is acceptable. */
+  function gpuError(row: Row): string | null {
+    const n = nonNegativeInt(row.maxGpus);
+    if (n == null) return "Whole number ≥ 0";
+    // The API rejects (not clamps) an over-ask, so block it before the PUT.
+    if (n > gpuCapacity) return `Max ${gpuCapacity} on this host`;
+    return null;
+  }
+
   const invalid = rows.some((r) => {
     if (!r.name.trim()) return true;
     if (positiveInt(r.ttlMinutes) == null) return true;
     if (r.networks.length === 0) return true;
+    if (gpuError(r) != null) return true;
     if (r.pricePerHour.trim()) {
       const n = Number(r.pricePerHour);
       if (!Number.isFinite(n) || n < 0) return true;
@@ -159,6 +185,8 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
         // positiveInt() is guaranteed non-null here (guarded by `invalid`).
         max_ttl_seconds: (positiveInt(r.ttlMinutes) as number) * 60,
         networks: r.networks,
+        // nonNegativeInt() is guaranteed non-null here (guarded by `invalid`).
+        max_gpus: nonNegativeInt(r.maxGpus) as number,
         enabled: r.enabled,
       };
       if (r.id) image.host_image_id = r.id;
@@ -199,6 +227,7 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
               <TableCell sx={{ width: 170 }}>Price</TableCell>
               <TableCell sx={{ width: 130 }}>Max TTL (min)</TableCell>
               <TableCell sx={{ width: 210 }}>Networks</TableCell>
+              <TableCell sx={{ width: 150 }}>Max GPUs</TableCell>
               <TableCell align="center" sx={{ width: 90 }}>
                 Enabled
               </TableCell>
@@ -208,7 +237,7 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6}>
+                <TableCell colSpan={7}>
                   <Typography color="text.secondary" variant="body2" sx={{ py: 1 }}>
                     No images yet. Add one to start offering it.
                   </Typography>
@@ -275,6 +304,48 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
                         </ToggleButton>
                       ))}
                     </ToggleButtonGroup>
+                  </TableCell>
+                  <TableCell>
+                    {gpuCapacity > 0 ? (
+                      <Stack spacing={0.25}>
+                        <TextField
+                          value={row.maxGpus}
+                          onChange={(e) => updateRow(row.key, { maxGpus: e.target.value })}
+                          type="number"
+                          size="small"
+                          variant="standard"
+                          placeholder="0"
+                          error={gpuError(row) != null}
+                          helperText={
+                            gpuError(row) ?? (gpuClasses.length ? gpuClasses.join(", ") : undefined)
+                          }
+                          slotProps={{
+                            htmlInput: {
+                              min: 0,
+                              max: gpuCapacity,
+                              step: 1,
+                              "aria-label": `max gpus for ${row.name || "image"}`,
+                            },
+                          }}
+                        />
+                        {gpuOfferLabel(nonNegativeInt(row.maxGpus) ?? 0) && (
+                          <Typography variant="caption" color="text.secondary">
+                            {gpuOfferLabel(nonNegativeInt(row.maxGpus) ?? 0)}
+                          </Typography>
+                        )}
+                      </Stack>
+                    ) : (
+                      <TextField
+                        value="0"
+                        disabled
+                        size="small"
+                        variant="standard"
+                        helperText="no GPU detected on this host"
+                        slotProps={{
+                          htmlInput: { "aria-label": `max gpus for ${row.name || "image"}` },
+                        }}
+                      />
+                    )}
                   </TableCell>
                   <TableCell align="center">
                     <Switch
