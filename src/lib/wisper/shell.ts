@@ -46,6 +46,7 @@ function toBytes(data: unknown): Uint8Array {
 export class ShellSocket {
   private ws: WebSocket | null = null;
   private closedByUser = false;
+  private everOpened = false;
 
   private readonly leaseId: string;
   private readonly onData: (bytes: Uint8Array) => void;
@@ -89,18 +90,43 @@ export class ShellSocket {
     // A `close()` that landed while the ticket was in flight wins.
     if (this.closedByUser) return;
 
-    const ws = this.createSocket(this.makeUrl(this.leaseId, ticket));
+    this.everOpened = false;
+    const url = this.makeUrl(this.leaseId, ticket);
+    const ws = this.createSocket(url);
     ws.binaryType = "arraybuffer";
     this.ws = ws;
 
-    ws.onopen = () => this.onStatus("open");
+    ws.onopen = () => {
+      this.everOpened = true;
+      this.onStatus("open");
+    };
     ws.onmessage = (ev: MessageEvent) => this.onData(toBytes(ev.data));
     ws.onerror = () => {
-      if (!this.closedByUser) this.onStatus("error", "connection error");
+      if (this.closedByUser) return;
+      // A WS `error` before ever opening means the UPGRADE HANDSHAKE failed
+      // (wrong URL, 400/401/403, DNS, TLS) — vs a mid-session drop after open.
+      // The browser hides the HTTP status, so log the URL to make a misconfig
+      // (e.g. NEXT_PUBLIC_WISPER_API_ORIGIN unset on Vercel, so the WS hit the
+      // same-origin rewrite that can't proxy upgrades) diagnosable.
+      const detail = this.everOpened ? "connection error" : "handshake failed";
+      console.error(
+        `[wisper] lease shell WebSocket ${detail} (url=${url}). ` +
+          "If this is a Vercel deploy, set NEXT_PUBLIC_WISPER_API_ORIGIN to the " +
+          "Wisper API origin — Vercel cannot proxy WebSocket upgrades through Next rewrites.",
+      );
+      this.onStatus("error", detail);
     };
     ws.onclose = (ev: CloseEvent) => {
       if (this.ws === ws) this.ws = null;
       if (this.closedByUser) return;
+      // A close without ever opening is also a failed handshake; annotate it so
+      // the UI/console distinguishes it from a normal server-initiated close.
+      if (!this.everOpened) {
+        console.error(
+          `[wisper] lease shell WebSocket closed before opening (url=${url}, code=${ev.code}` +
+            `${ev.reason ? `, reason=${ev.reason}` : ""}). The upgrade handshake did not complete.`,
+        );
+      }
       this.onStatus("closed", ev.reason || undefined);
     };
   }

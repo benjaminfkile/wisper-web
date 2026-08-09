@@ -9,6 +9,7 @@ import {
   normalizeTransactionPage,
   request,
   setAuthToken,
+  shellSocketUrl,
   wisper,
   WisperError,
 } from "./client";
@@ -31,6 +32,7 @@ function stubFetch(impl: (url: string, init?: RequestInit) => Response | Promise
 describe("wisper client", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     setAuthToken(null);
   });
 
@@ -305,5 +307,29 @@ describe("wisper client", () => {
     expect(err.status).toBe(402);
     expect(err.code).toBe("insufficient_funds");
     expect(err.message).toBe("wallet too low");
+  });
+
+  describe("shellSocketUrl", () => {
+    it("uses the API origin (wss, path prefix, ticket) when NEXT_PUBLIC_WISPER_API_ORIGIN is set", () => {
+      vi.stubEnv("NEXT_PUBLIC_WISPER_API_ORIGIN", "https://api.benkile.com/wisper-api-dev");
+      expect(shellSocketUrl("lease 1", "tk/t?a")).toBe(
+        "wss://api.benkile.com/wisper-api-dev/v1/leases/lease%201/shell?ticket=tk%2Ft%3Fa",
+      );
+    });
+
+    it("maps an http origin to a ws:// URL and trims a trailing slash", () => {
+      vi.stubEnv("NEXT_PUBLIC_WISPER_API_ORIGIN", "http://127.0.0.1:8090/wisper/");
+      expect(shellSocketUrl("l1", "t1")).toBe(
+        "ws://127.0.0.1:8090/wisper/v1/leases/l1/shell?ticket=t1",
+      );
+    });
+
+    it("falls back to the same-origin /wisper URL when the env is unset", () => {
+      vi.stubEnv("NEXT_PUBLIC_WISPER_API_ORIGIN", "");
+      // jsdom serves the tests over http://localhost:3000 -> ws.
+      expect(shellSocketUrl("l1", "t1")).toBe(
+        `ws://${window.location.host}/wisper/v1/leases/l1/shell?ticket=t1`,
+      );
+    });
   });
 });
