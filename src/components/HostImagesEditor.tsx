@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -33,9 +33,25 @@ interface HostImagesEditorProps {
   onSaved: (host: Host) => void;
 }
 
-const NETWORK_OPTIONS: WispNetwork[] = ["none", "open", "egress"];
+/** The full set of valid network modes — the fallback when a host doesn't yet
+ *  surface its own supported-networks capability. */
+const ALL_NETWORKS: WispNetwork[] = ["none", "open", "egress"];
 const DEFAULT_TTL_MINUTES = "60";
-const DEFAULT_NETWORKS: WispNetwork[] = ["none", "open"];
+const PREFERRED_DEFAULT_NETWORKS: WispNetwork[] = ["none", "open"];
+
+/** The networks a host operator may offer: the host's advertised capability, or
+ *  the full valid set when the host record doesn't surface one. */
+function hostNetworkOptions(host: Host): WispNetwork[] {
+  const supported = (host.supported_networks ?? []).filter((n) => ALL_NETWORKS.includes(n));
+  return supported.length > 0 ? supported : ALL_NETWORKS;
+}
+
+/** The networks a fresh/blank row offers: the preferred defaults intersected with
+ *  what the host supports, falling back to everything the host supports. */
+function defaultRowNetworks(hostNetworks: WispNetwork[]): WispNetwork[] {
+  const preferred = hostNetworks.filter((n) => PREFERRED_DEFAULT_NETWORKS.includes(n));
+  return preferred.length > 0 ? preferred : hostNetworks;
+}
 
 /** An editor row: the image plus its per-hour price, TTL, and networks as edits. */
 interface Row {
@@ -56,7 +72,7 @@ interface Row {
 
 let syntheticId = 0;
 
-function toRow(image: HostImage): Row {
+function toRow(image: HostImage, defaultNetworks: WispNetwork[]): Row {
   return {
     key: image.host_image_id ?? image.image_ref,
     id: image.host_image_id ?? "",
@@ -68,7 +84,7 @@ function toRow(image: HostImage): Row {
     ttlMinutes: image.max_ttl_seconds
       ? String(Math.max(1, Math.round(image.max_ttl_seconds / 60)))
       : DEFAULT_TTL_MINUTES,
-    networks: image.networks?.length ? image.networks : DEFAULT_NETWORKS,
+    networks: image.networks?.length ? image.networks : defaultNetworks,
     maxGpus: String(image.max_gpus ?? 0),
     enabled: image.enabled ?? true,
   };
@@ -101,20 +117,36 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  // Networks this host operator may offer per image (host capability), and the
+  // subset a fresh row starts with. Derived from the host record; falls back to
+  // the full valid set when the host doesn't surface its capability yet. Keyed on
+  // the primitive capability list so the memo stays stable across parent renders
+  // (an unstable array would re-fire `load` and spin the fetch).
+  const networksKey = (host.supported_networks ?? []).join("|");
+  const networkOptions = useMemo(
+    () => hostNetworkOptions(host),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [networksKey],
+  );
+  const rowDefaultNetworks = useMemo(
+    () => defaultRowNetworks(networkOptions),
+    [networkOptions],
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     setSaved(false);
     try {
       const images = await wisper.getHostImages(host.id);
-      setRows(images.map(toRow));
+      setRows(images.map((img) => toRow(img, rowDefaultNetworks)));
     } catch (err) {
       setError(err instanceof WisperError ? err.message : "Failed to load images.");
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [host.id]);
+  }, [host.id, rowDefaultNetworks]);
 
   useEffect(() => {
     void load();
@@ -139,7 +171,7 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
         name: "",
         pricePerHour: "",
         ttlMinutes: DEFAULT_TTL_MINUTES,
-        networks: DEFAULT_NETWORKS,
+        networks: rowDefaultNetworks,
         maxGpus: "0",
         enabled: true,
       },
@@ -298,7 +330,7 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
                       size="small"
                       aria-label={`networks for ${row.name || "image"}`}
                     >
-                      {NETWORK_OPTIONS.map((n) => (
+                      {networkOptions.map((n) => (
                         <ToggleButton key={n} value={n} sx={{ px: 1, py: 0.25, textTransform: "none" }}>
                           {n}
                         </ToggleButton>

@@ -61,11 +61,56 @@ describe("CreateLeaseDialog", () => {
       expect.objectContaining({
         host_id: "h1",
         host_image_id: "img1",
-        network: "egress",
+        // The base offer advertises no networks, so the picker falls back to the
+        // full valid set and defaults to its first mode ("none"), never "egress".
+        network: "none",
         ttl_seconds: 3600,
       }),
     );
     expect(onCreated).toHaveBeenCalledWith({ id: "l1", status: "pending" });
+  });
+
+  it("shows only the offer's advertised networks and defaults to its first", async () => {
+    const user = userEvent.setup();
+    createLease.mockResolvedValue({ id: "ln", status: "pending" });
+    // Offer advertises none/open only — egress must not appear, and the default
+    // must not be egress (the live bug this fixes).
+    renderDialog({ image: { ...image, networks: ["none", "open"] } });
+
+    await user.click(screen.getByLabelText(/Network/i));
+    const options = await screen.findAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(["None", "Open"]);
+    expect(screen.queryByRole("option", { name: "Egress" })).not.toBeInTheDocument();
+
+    // Close the menu (pick the offer default) and submit — a supported mode is sent.
+    await user.click(screen.getByRole("option", { name: "None" }));
+    await user.click(screen.getByRole("button", { name: /create lease/i }));
+    await waitFor(() => expect(createLease).toHaveBeenCalledTimes(1));
+    expect(createLease).toHaveBeenCalledWith(expect.objectContaining({ network: "none" }));
+  });
+
+  it("defaults to the offer's first advertised network, not egress, when egress is unsupported", async () => {
+    const user = userEvent.setup();
+    createLease.mockResolvedValue({ id: "lo", status: "pending" });
+    // 'open' is first here; egress is not offered at all.
+    renderDialog({ image: { ...image, networks: ["open", "none"] } });
+
+    await user.click(screen.getByRole("button", { name: /create lease/i }));
+    await waitFor(() => expect(createLease).toHaveBeenCalledTimes(1));
+    expect(createLease).toHaveBeenCalledWith(expect.objectContaining({ network: "open" }));
+  });
+
+  it("preselects and submits the sole network when an offer advertises only one", async () => {
+    const user = userEvent.setup();
+    createLease.mockResolvedValue({ id: "l1n", status: "pending" });
+    renderDialog({ image: { ...image, networks: ["egress"] } });
+
+    // The only advertised mode is preselected without any interaction.
+    expect(screen.getByLabelText(/Network/i)).toHaveTextContent("Egress");
+
+    await user.click(screen.getByRole("button", { name: /create lease/i }));
+    await waitFor(() => expect(createLease).toHaveBeenCalledTimes(1));
+    expect(createLease).toHaveBeenCalledWith(expect.objectContaining({ network: "egress" }));
   });
 
   it("includes optional resources and userdata when provided", async () => {

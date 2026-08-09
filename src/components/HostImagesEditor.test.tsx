@@ -155,6 +155,43 @@ describe("HostImagesEditor", () => {
     expect(screen.queryByText(/GPU: up to/)).not.toBeInTheDocument();
   });
 
+  it("offers all three networks when the host advertises no capability", async () => {
+    getHostImages.mockResolvedValue(IMAGES);
+    render(<HostImagesEditor host={HOST} onSaved={() => {}} />);
+    const group = await screen.findByRole("group", { name: /networks for ubuntu-22.04/i });
+    const toggles = Array.from(group.querySelectorAll("button")).map((b) => b.textContent);
+    expect(toggles).toEqual(["none", "open", "egress"]);
+  });
+
+  it("offers only the host's supported networks as toggles", async () => {
+    getHostImages.mockResolvedValue([{ ...IMAGES[0], networks: ["none"] }]);
+    const restrictedHost: Host = { ...HOST, supported_networks: ["none", "open"] };
+    render(<HostImagesEditor host={restrictedHost} onSaved={() => {}} />);
+    const group = await screen.findByRole("group", { name: /networks for ubuntu-22.04/i });
+    const toggles = Array.from(group.querySelectorAll("button")).map((b) => b.textContent);
+    // egress is not a host capability here, so it must not be offerable.
+    expect(toggles).toEqual(["none", "open"]);
+  });
+
+  it("starts a new row with host-supported default networks only", async () => {
+    const user = userEvent.setup();
+    getHostImages.mockResolvedValue(IMAGES);
+    updateHostImages.mockResolvedValue({ ...HOST });
+    // Host supports only egress -> a new row defaults to [egress], not none/open.
+    const egressHost: Host = { ...HOST, supported_networks: ["egress"] };
+    render(<HostImagesEditor host={egressHost} onSaved={() => {}} />);
+    await screen.findByDisplayValue("ubuntu-22.04");
+
+    await user.click(screen.getByRole("button", { name: /add image/i }));
+    const groups = screen.getAllByRole("group", { name: /networks for/i });
+    // The new (blank-name) row is the last group; its only toggle is egress, pressed.
+    const newGroup = groups[groups.length - 1];
+    const pressed = Array.from(newGroup.querySelectorAll("button"))
+      .filter((b) => b.getAttribute("aria-pressed") === "true")
+      .map((b) => b.textContent);
+    expect(pressed).toEqual(["egress"]);
+  });
+
   it("surfaces a save error", async () => {
     const user = userEvent.setup();
     const { WisperError } = await import("@/lib/wisper/client");
