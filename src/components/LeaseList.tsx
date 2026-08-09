@@ -23,6 +23,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import { wisper, WisperError } from "@/lib/wisper/client";
 import { formatDateTime, formatDuration, formatUsd } from "@/lib/format";
 import { isTerminalLease, leaseStatusColor } from "@/lib/leaseStatus";
+import { offerCpusLabel, offerMemoryLabel } from "@/lib/offer";
 import type { Lease } from "@/lib/wisper/types";
 
 interface LeaseListProps {
@@ -155,15 +156,38 @@ export default function LeaseList({ pollMs = 5000 }: LeaseListProps) {
                       />
                     </TableCell>
                     <TableCell>
-                      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        useFlexGap
+                        sx={{ alignItems: "center", flexWrap: "wrap" }}
+                      >
                         <span>{lease.host_image_id}</span>
-                        {(lease.resources?.gpus ?? 0) > 0 && (
+                        {/* Provisioned size profile — vCPU/RAM shown only when the
+                            lease sizes them (a host-default dimension is omitted). */}
+                        {lease.cpus != null && lease.cpus > 0 && (
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label={offerCpusLabel(lease.cpus)}
+                            aria-label={`vcpus ${lease.cpus}`}
+                          />
+                        )}
+                        {lease.memory_mb != null && lease.memory_mb > 0 && (
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label={offerMemoryLabel(lease.memory_mb)}
+                            aria-label={`ram ${offerMemoryLabel(lease.memory_mb)}`}
+                          />
+                        )}
+                        {(lease.gpus ?? 0) > 0 && (
                           <Chip
                             size="small"
                             variant="outlined"
                             color="secondary"
-                            label={`${lease.resources?.gpus} GPU`}
-                            aria-label={`gpus ${lease.resources?.gpus}`}
+                            label={`${lease.gpus} GPU`}
+                            aria-label={`gpus ${lease.gpus}`}
                           />
                         )}
                       </Stack>

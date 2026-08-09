@@ -22,6 +22,16 @@
 // (offer + host-image shapes). All three are optional so an older API that omits
 // them degrades gracefully (absent = host default / CPU-only), preserving the
 // tolerant-normalizer discipline.
+//
+// 2026-08-09 (create-lease sells sizes): POST /v1/leases now REJECTS free-form
+// resources — a lease provisions EXACTLY the selected offer's profile, so the
+// request body no longer carries `resources`/`gpus`, and a lease RESPONSE echoes
+// the provisioned profile as flat `cpus`/`memory_mb`/`gpus` (mirroring the offer
+// shape) rather than a nested `resources` blob. Lease creation fast-fails with
+// the existing `at_capacity` (409) code when a host is full, and the
+// catalog/host payloads gain a per-host `at_capacity` (bool) plus optional
+// `active_leases`/`max_leases` ints. All new fields are optional — an older API
+// that omits them degrades to the prior behavior (no capacity badge, no profile).
 // ============================================================================
 
 /** Liveness (GET /healthz). */
@@ -144,6 +154,16 @@ export interface CatalogHost {
   gpu_classes?: string[];
   /** Total GPUs the host advertises, when present (older API omits it). */
   gpu_count?: number;
+  /**
+   * Whether the host is FULL — it has no free lease slot right now, so lease
+   * creation would fast-fail with `at_capacity` (409). Absent on an older API,
+   * in which case no capacity badge shows and creation is not pre-disabled.
+   */
+  at_capacity?: boolean;
+  /** Leases currently running on the host, when reported (older API omits it). */
+  active_leases?: number;
+  /** The host's concurrent-lease ceiling, when reported (older API omits it). */
+  max_leases?: number;
   images: PricedImage[];
 }
 
@@ -170,25 +190,15 @@ export interface CatalogQuery {
   gpu_class?: string;
 }
 
-/** Requested compute for a lease. */
-export interface LeaseResources {
-  cpu?: number;
-  memory_mb?: number;
-  disk_mb?: number;
-  /**
-   * GPUs requested for the lease (bounded by the offer's `gpus`). Defaults to
-   * `0`; the create flow omits it when 0, per the resources-payload convention.
-   * Carried back on a lease's `resources` so views can show the leased GPU count.
-   */
-  gpus?: number;
-}
-
-/** Body for POST /v1/leases. */
+/**
+ * Body for POST /v1/leases. A lease provisions EXACTLY the selected offer's size
+ * profile, so this body carries NO `resources`/`gpus` — the API rejects free-form
+ * compute (`validation_error`). The size comes from `host_image_id` alone.
+ */
 export interface CreateLeaseRequest {
   host_id: string;
   host_image_id: string;
   network: WispNetwork;
-  resources?: LeaseResources;
   ttl_seconds: number;
   userdata?: string;
   /** Chosen isolation level; omitted when the host advertises none to choose. */
@@ -202,8 +212,17 @@ export interface Lease {
   host_id: string;
   host_image_id: string;
   network: WispNetwork;
-  resources?: LeaseResources;
   ttl_seconds: number;
+  /**
+   * Provisioned size profile of the lease — the selected offer's fixed profile,
+   * echoed back on the lease. `cpus`/`memory_mb` are `null` (or absent) when the
+   * offer took the host-side default; `memory_mb` is whole megabytes. `gpus` is
+   * the EXACT provisioned GPU count (absent or `0` = CPU-only). All optional so
+   * an older API that omits them degrades to no profile display.
+   */
+  cpus?: number | null;
+  memory_mb?: number | null;
+  gpus?: number;
   /** OS of the leased container, when known (older API omits it). */
   os?: HostOs;
   /** Isolation level this lease runs under, when reported (older API omits it). */

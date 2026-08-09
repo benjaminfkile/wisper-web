@@ -95,20 +95,33 @@ describe("LeaseDetail", () => {
     expect(screen.queryByText("Isolation")).not.toBeInTheDocument();
   });
 
-  it("shows the leased GPU count when the lease has GPUs", async () => {
-    getLease.mockResolvedValue(lease({ resources: { gpus: 2 } }));
+  it("shows the provisioned size profile (vCPU / RAM / GPU) when the lease has one", async () => {
+    getLease.mockResolvedValue(lease({ cpus: 8, memory_mb: 16384, gpus: 2 }));
     render(<LeaseDetail leaseId="l1" pollMs={0} />);
 
-    const label = await screen.findByText("GPUs");
-    expect(within(label.parentElement as HTMLElement).getByText("2")).toBeInTheDocument();
+    const label = await screen.findByText("Size");
+    expect(
+      within(label.parentElement as HTMLElement).getByText("8 vCPU · 16 GB · 2 GPUs"),
+    ).toBeInTheDocument();
   });
 
-  it("omits the GPU field when no GPUs were leased", async () => {
-    getLease.mockResolvedValue(lease({ resources: { gpus: 0 } }));
+  it("renders 'host default' for a size dimension the offer left to the host", async () => {
+    getLease.mockResolvedValue(lease({ cpus: null, memory_mb: 8192, gpus: 0 }));
+    render(<LeaseDetail leaseId="l1" pollMs={0} />);
+
+    const label = await screen.findByText("Size");
+    // vCPU host-defaulted, RAM sized, no GPU segment.
+    expect(
+      within(label.parentElement as HTMLElement).getByText("vCPU: host default · 8 GB"),
+    ).toBeInTheDocument();
+  });
+
+  it("omits the Size field when the lease reports no profile (older API)", async () => {
+    getLease.mockResolvedValue(lease({ cpus: undefined, memory_mb: undefined, gpus: undefined }));
     render(<LeaseDetail leaseId="l1" pollMs={0} />);
 
     await screen.findByText("active");
-    expect(screen.queryByText("GPUs")).not.toBeInTheDocument();
+    expect(screen.queryByText("Size")).not.toBeInTheDocument();
   });
 
   it("switches the Exec command placeholder for a windows lease", async () => {

@@ -62,12 +62,22 @@ describe("LeaseList", () => {
   });
 
   it("shows a GPU chip only on leases that leased GPUs", async () => {
-    listLeases.mockResolvedValue([{ ...LEASES[0], resources: { gpus: 2 } }, LEASES[1]]);
+    listLeases.mockResolvedValue([{ ...LEASES[0], gpus: 2 }, LEASES[1]]);
     render(<LeaseList pollMs={0} />);
 
     // The GPU lease carries a "2 GPU" chip; the other lease carries none.
     expect(await screen.findByLabelText("gpus 2")).toBeInTheDocument();
     expect(screen.getAllByLabelText(/^gpus /i)).toHaveLength(1);
+  });
+
+  it("shows the provisioned vCPU/RAM profile chips when the lease sizes them", async () => {
+    listLeases.mockResolvedValue([{ ...LEASES[0], cpus: 4, memory_mb: 8192 }, LEASES[1]]);
+    render(<LeaseList pollMs={0} />);
+
+    expect(await screen.findByLabelText("vcpus 4")).toBeInTheDocument();
+    expect(screen.getByLabelText("ram 8 GB")).toBeInTheDocument();
+    // Only the sized lease gets them.
+    expect(screen.getAllByLabelText(/^vcpus /i)).toHaveLength(1);
   });
 
   it("shows no GPU chip when no leases have GPUs", async () => {
