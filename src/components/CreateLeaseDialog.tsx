@@ -46,6 +46,19 @@ const NETWORKS: { value: WispNetwork; label: string; help: string }[] = [
   { value: "open", label: "Open", help: "Full inbound + outbound" },
 ];
 
+/**
+ * The networks this offer actually advertises (its priced image's `networks`),
+ * in the offer's own order and filtered to modes this UI knows how to label.
+ * When an offer advertises none (older API omits the list, or it comes back
+ * empty), fall back to the full valid set so the picker is never empty.
+ */
+function offerNetworks(image: PricedImage | null): WispNetwork[] {
+  const advertised = (image?.networks ?? []).filter((n) =>
+    NETWORKS.some((opt) => opt.value === n),
+  );
+  return advertised.length > 0 ? advertised : NETWORKS.map((opt) => opt.value);
+}
+
 const TTL_UNITS: { value: number; label: string }[] = [
   { value: 60, label: "minutes" },
   { value: 3600, label: "hours" },
@@ -72,7 +85,7 @@ export default function CreateLeaseDialog({
   onClose,
   onCreated,
 }: CreateLeaseDialogProps) {
-  const [network, setNetwork] = useState<WispNetwork>("egress");
+  const [network, setNetwork] = useState<WispNetwork>("none");
   const [isolation, setIsolation] = useState<IsolationLevel | "">("");
   const [cpu, setCpu] = useState("");
   const [memoryMb, setMemoryMb] = useState("");
@@ -94,6 +107,17 @@ export default function CreateLeaseDialog({
   // A single advertised level (e.g. shared-only) is shown read-only — nothing to pick.
   const isolationReadOnly = isolationLevels.length === 1;
 
+  // The network modes THIS offer advertises — the only ones the picker may show.
+  const networks = useMemo(() => offerNetworks(image), [image]);
+  // The friendly {value,label,help} entries for the advertised modes, in offer order.
+  const networkOptions = useMemo(
+    () => networks.map((v) => NETWORKS.find((opt) => opt.value === v)!),
+    [networks],
+  );
+  // Clamp the selection to an advertised mode so the value is always a rendered
+  // option (guards the first render before the reset effect, and any drift).
+  const selectedNetwork = networks.includes(network) ? network : networks[0];
+
   // Reset transient state each time the dialog is (re)opened for a selection.
   useEffect(() => {
     if (open) {
@@ -103,6 +127,9 @@ export default function CreateLeaseDialog({
       const levels = image?.isolation_levels ?? [];
       const preferred = image?.default_isolation;
       setIsolation(preferred && levels.includes(preferred) ? preferred : levels[0] ?? "");
+      // Default the network to one the offer actually advertises (its first),
+      // never to a mode it lacks — an over-ask is rejected by the API.
+      setNetwork(offerNetworks(image)[0]);
     }
   }, [open, host, image]);
 
@@ -136,7 +163,7 @@ export default function CreateLeaseDialog({
     const body: CreateLeaseRequest = {
       host_id: host.host_id,
       host_image_id: image.host_image_id,
-      network,
+      network: selectedNetwork,
       ttl_seconds: ttlSeconds,
     };
     if (Object.keys(resources).length > 0) body.resources = resources;
@@ -179,12 +206,12 @@ export default function CreateLeaseDialog({
             <TextField
               select
               label="Network"
-              value={network}
+              value={selectedNetwork}
               onChange={(e) => setNetwork(e.target.value as WispNetwork)}
-              helperText={NETWORKS.find((n) => n.value === network)?.help}
+              helperText={NETWORKS.find((n) => n.value === selectedNetwork)?.help}
               fullWidth
             >
-              {NETWORKS.map((n) => (
+              {networkOptions.map((n) => (
                 <MenuItem key={n.value} value={n.value}>
                   {n.label}
                 </MenuItem>

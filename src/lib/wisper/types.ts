@@ -340,6 +340,13 @@ export interface Host {
   gpu_classes?: string[];
   /** Total GPUs the host advertises, when present (older API omits it). */
   gpu_count?: number;
+  /**
+   * Network modes the host's machine actually supports (its capability). A host
+   * operator can only offer a subset of these per image. Absent on older API
+   * builds that don't surface the capability, in which case the editor falls
+   * back to the full valid set (none/open/egress).
+   */
+  supported_networks?: WispNetwork[];
   /** Host-side priced images, when the build exposes them (optional). */
   images?: HostImage[];
   region?: string;
