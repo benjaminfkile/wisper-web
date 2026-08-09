@@ -211,8 +211,8 @@ describe("CreateLeaseDialog", () => {
     expect(screen.queryByLabelText(/GPUs/i)).not.toBeInTheDocument();
   });
 
-  it("shows a GPU input bounded by the offer's max_gpus", () => {
-    renderDialog({ image: { ...image, max_gpus: 4 } });
+  it("shows a GPU input bounded by the offer's gpus", () => {
+    renderDialog({ image: { ...image, gpus: 4 } });
     const field = screen.getByLabelText(/GPUs/i);
     expect(field).toHaveAttribute("max", "4");
     expect(field).toHaveAttribute("min", "0");
@@ -221,7 +221,7 @@ describe("CreateLeaseDialog", () => {
   it("sends the requested gpus in resources, and omits them when left at 0", async () => {
     const user = userEvent.setup();
     createLease.mockResolvedValue({ id: "lg", status: "pending" });
-    renderDialog({ image: { ...image, max_gpus: 4 } });
+    renderDialog({ image: { ...image, gpus: 4 } });
 
     // Left at the default 0 → no gpus in the payload.
     await user.click(screen.getByRole("button", { name: /create lease/i }));
@@ -242,7 +242,7 @@ describe("CreateLeaseDialog", () => {
     createLease.mockRejectedValue(
       new WisperError(400, "invalid_request", "gpus exceeds the offer maximum"),
     );
-    renderDialog({ image: { ...image, max_gpus: 2 } });
+    renderDialog({ image: { ...image, gpus: 2 } });
 
     const field = screen.getByLabelText(/GPUs/i);
     await user.clear(field);

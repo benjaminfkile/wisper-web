@@ -6,6 +6,7 @@
 const CENTS_PER_USD = 100;
 const SECONDS_PER_HOUR = 3600;
 const MINUTES_PER_HOUR = 60;
+const MB_PER_GB = 1024;
 
 /** Format a cents amount as a dollar string, e.g. `150` -> `$1.50`. */
 export function formatUsd(cents: number, fractionDigits = 2): string {
@@ -47,6 +48,24 @@ export function centsPerMinToPerHour(centsPerMinute: number): number {
  */
 export function perHourToCentsPerMin(dollarsPerHour: number): number {
   return Math.round((dollarsPerHour * CENTS_PER_USD) / MINUTES_PER_HOUR);
+}
+
+/**
+ * Convert the contract's whole-megabyte `memory_mb` unit to a plain gigabytes
+ * number for display, e.g. `2048` -> `2`. Mirrors {@link centsPerMinToPerHour}:
+ * the wire keeps the small integer unit while the UI lets hosts think in GB.
+ */
+export function memoryMbToGb(memoryMb: number): number {
+  return memoryMb / MB_PER_GB;
+}
+
+/**
+ * Convert a gigabytes RAM figure back to the contract's whole-megabyte
+ * `memory_mb` (rounded to a whole MB), e.g. `2` -> `2048`. Inverse of
+ * {@link memoryMbToGb}; used when saving an offer's fixed size profile.
+ */
+export function gbToMemoryMb(gb: number): number {
+  return Math.round(gb * MB_PER_GB);
 }
 
 /** Format a TTL / duration in seconds as a compact `1h 30m` style string. */

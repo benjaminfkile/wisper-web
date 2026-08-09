@@ -97,10 +97,10 @@ export default function CreateLeaseDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<WisperError | null>(null);
 
-  // Whether this offer leases GPUs (older API / a CPU-only offer omits max_gpus).
+  // Whether this offer provides GPUs (older API / a CPU-only offer omits gpus).
   const hasGpu = offerHasGpu(image);
-  // The offer's GPU ceiling — the input's max; the API is authoritative on over-ask.
-  const maxGpus = image?.max_gpus ?? 0;
+  // The offer's exact GPU count — the input's max; the API is authoritative on over-ask.
+  const maxGpus = image?.gpus ?? 0;
 
   // Isolation levels the selected image can be leased under (older API omits them).
   const isolationLevels = useMemo(() => image?.isolation_levels ?? [], [image]);

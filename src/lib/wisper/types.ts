@@ -14,6 +14,14 @@
 // bare array — so components receive clean typed arrays/objects and never crash
 // on shape drift again. If you change a shape here, update client.ts's
 // normalizers and the tests that pin them, and keep this paper trail current.
+//
+// 2026-08-09: offers now carry a FIXED per-offer size profile — `cpus`
+// (int|null), `memory_mb` (int|null), `gpus` (int, EXACT). An offer is a size at
+// a price, like an instance type. `null` cpus/memory means the host-side
+// default. `gpus` REPLACES the old `max_gpus` ceiling everywhere in payloads
+// (offer + host-image shapes). All three are optional so an older API that omits
+// them degrades gracefully (absent = host default / CPU-only), preserving the
+// tolerant-normalizer discipline.
 // ============================================================================
 
 /** Liveness (GET /healthz). */
@@ -100,12 +108,20 @@ export interface PricedImage {
   /** The level pre-selected in the create flow; one of `isolation_levels`. */
   default_isolation?: IsolationLevel;
   /**
-   * Maximum GPUs leasable against this offer. Absent or `0` (older API / a
-   * CPU-only offer) means no GPU: the badge and the create-flow GPU input are
-   * hidden. The create flow caps its input at this value but never pre-clamps an
-   * over-ask — the API is authoritative and rejects it.
+   * Fixed size profile of this offer — it is a SIZE at a price, like an instance
+   * type. `cpus`/`memory_mb` are `null` (or absent) when the offer takes the
+   * host-side default and are shown as "host default". `memory_mb` is whole
+   * megabytes (the UI shows/enters it in GB). Absent on an older API, in which
+   * case the size chips fall back to "host default".
    */
-  max_gpus?: number;
+  cpus?: number | null;
+  memory_mb?: number | null;
+  /**
+   * EXACT number of GPUs this offer provides (not a ceiling). Absent or `0`
+   * (older API / a CPU-only offer) means no GPU: the badge and the create-flow
+   * GPU input are hidden. REPLACES the old `max_gpus` field everywhere.
+   */
+  gpus?: number;
 }
 
 /**
@@ -160,9 +176,9 @@ export interface LeaseResources {
   memory_mb?: number;
   disk_mb?: number;
   /**
-   * GPUs requested for the lease (0..offer `max_gpus`). Defaults to `0`; the
-   * create flow omits it when 0, per the resources-payload convention. Carried
-   * back on a lease's `resources` so views can show the leased GPU count.
+   * GPUs requested for the lease (bounded by the offer's `gpus`). Defaults to
+   * `0`; the create flow omits it when 0, per the resources-payload convention.
+   * Carried back on a lease's `resources` so views can show the leased GPU count.
    */
   gpus?: number;
 }
@@ -306,11 +322,16 @@ export interface HostImage {
   /** Max lease TTL in seconds. Required by the API on save (positive integer). */
   max_ttl_seconds?: number;
   /**
-   * Maximum GPUs leasable against this image (0 = CPU-only, the default). The
-   * API validates this against the host's advertised `gpu_count` and rejects an
-   * over-ask, so the editor caps it client-side at the host's capability.
+   * Fixed size profile for this offer. `cpus`/`memory_mb` are `null` (or omitted)
+   * to take the host-side default; `memory_mb` is whole megabytes (the editor
+   * enters it in GB). `gpus` is the EXACT GPU count (0 = CPU-only, the default),
+   * which the API validates against the host's advertised `gpu_count` and rejects
+   * an over-ask — so the editor caps it client-side at the host's capability.
+   * `gpus` REPLACES the old `max_gpus` field.
    */
-  max_gpus?: number;
+  cpus?: number | null;
+  memory_mb?: number | null;
+  gpus?: number;
 }
 
 /**
