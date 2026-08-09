@@ -192,6 +192,9 @@ export function normalizeApiKeyList(
  * Normalize a GET /v1/catalog response into a {@link Catalog}. The real endpoint
  * returns `{ data, next_cursor }`; this also tolerates a bare array and the
  * legacy `{ hosts }` envelope so the browser always receives a clean host list.
+ * Per-host optional fields (size profile, GPU inventory, and the newer
+ * `at_capacity`/`active_leases`/`max_leases` capacity fields) ride along on each
+ * host as-is — absent fields stay `undefined`, so an older API degrades cleanly.
  */
 export function normalizeCatalog(
   body:

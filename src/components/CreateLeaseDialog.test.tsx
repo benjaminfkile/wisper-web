@@ -113,23 +113,47 @@ describe("CreateLeaseDialog", () => {
     expect(createLease).toHaveBeenCalledWith(expect.objectContaining({ network: "egress" }));
   });
 
-  it("includes optional resources and userdata when provided", async () => {
+  it("renders no compute inputs — a lease sells the offer's fixed size", () => {
+    renderDialog({ image: { ...image, cpus: 8, memory_mb: 16384, gpus: 2 } });
+    // The old free-form resource/GPU number inputs are gone; the API rejects
+    // them. Scoped to spinbutton role so the read-only size chips don't match.
+    expect(screen.queryByRole("spinbutton", { name: /vCPUs/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton", { name: /Memory/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton", { name: /Disk/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton", { name: /GPUs/i })).not.toBeInTheDocument();
+  });
+
+  it("sends no resources/gpus in the body, only userdata alongside the base fields", async () => {
     const user = userEvent.setup();
     createLease.mockResolvedValue({ id: "l2", status: "pending" });
     renderDialog();
 
-    await user.type(screen.getByLabelText(/vCPUs/i), "2");
-    await user.type(screen.getByLabelText(/Memory/i), "1024");
     await user.type(screen.getByLabelText(/Userdata/i), "echo hi");
     await user.click(screen.getByRole("button", { name: /create lease/i }));
 
     await waitFor(() => expect(createLease).toHaveBeenCalledTimes(1));
-    expect(createLease).toHaveBeenCalledWith(
-      expect.objectContaining({
-        resources: { cpu: 2, memory_mb: 1024 },
-        userdata: "echo hi",
-      }),
-    );
+    const body = createLease.mock.calls[0][0];
+    expect(body).toMatchObject({ host_id: "h1", host_image_id: "img1", userdata: "echo hi" });
+    // A lease provisions the offer profile — never free-form resources/gpus.
+    expect(body).not.toHaveProperty("resources");
+    expect(body).not.toHaveProperty("gpus");
+  });
+
+  it("shows the offer's size profile read-only (vCPU / RAM / GPU chips)", () => {
+    renderDialog({
+      image: { ...image, cpus: 8, memory_mb: 16384, gpus: 2 },
+      host: { ...host, gpu_classes: ["A100"] },
+    });
+    expect(screen.getByLabelText("vcpus 8 vCPU")).toBeInTheDocument();
+    expect(screen.getByLabelText("ram 16 GB")).toBeInTheDocument();
+    expect(screen.getByLabelText("gpus A100 × 2")).toBeInTheDocument();
+  });
+
+  it("shows 'host default' size chips and no GPU chip for a bare offer", () => {
+    renderDialog();
+    expect(screen.getByLabelText("vcpus vCPU: host default")).toBeInTheDocument();
+    expect(screen.getByLabelText("ram RAM: host default")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^gpus /i)).not.toBeInTheDocument();
   });
 
   it("keeps the POSIX userdata hint for a linux host", () => {
@@ -206,53 +230,17 @@ describe("CreateLeaseDialog", () => {
     expect(link).toHaveAttribute("href", "/billing");
   });
 
-  it("omits the GPU input for an offer with no GPUs", () => {
+  it("surfaces an at_capacity failure with a distinct, non-billing message", async () => {
+    const user = userEvent.setup();
+    createLease.mockRejectedValue(new WisperError(409, "at_capacity", "host is full"));
     renderDialog();
-    expect(screen.queryByLabelText(/GPUs/i)).not.toBeInTheDocument();
-  });
 
-  it("shows a GPU input bounded by the offer's gpus", () => {
-    renderDialog({ image: { ...image, gpus: 4 } });
-    const field = screen.getByLabelText(/GPUs/i);
-    expect(field).toHaveAttribute("max", "4");
-    expect(field).toHaveAttribute("min", "0");
-  });
-
-  it("sends the requested gpus in resources, and omits them when left at 0", async () => {
-    const user = userEvent.setup();
-    createLease.mockResolvedValue({ id: "lg", status: "pending" });
-    renderDialog({ image: { ...image, gpus: 4 } });
-
-    // Left at the default 0 → no gpus in the payload.
-    await user.click(screen.getByRole("button", { name: /create lease/i }));
-    await waitFor(() => expect(createLease).toHaveBeenCalledTimes(1));
-    expect(createLease.mock.calls[0][0].resources?.gpus).toBeUndefined();
-
-    // Ask for 2 → sent through resources.
-    const field = screen.getByLabelText(/GPUs/i);
-    await user.clear(field);
-    await user.type(field, "2");
-    await user.click(screen.getByRole("button", { name: /create lease/i }));
-    await waitFor(() => expect(createLease).toHaveBeenCalledTimes(2));
-    expect(createLease.mock.calls[1][0].resources).toMatchObject({ gpus: 2 });
-  });
-
-  it("surfaces the API validation error on an over-ask without pre-clamping", async () => {
-    const user = userEvent.setup();
-    createLease.mockRejectedValue(
-      new WisperError(400, "invalid_request", "gpus exceeds the offer maximum"),
-    );
-    renderDialog({ image: { ...image, gpus: 2 } });
-
-    const field = screen.getByLabelText(/GPUs/i);
-    await user.clear(field);
-    await user.type(field, "5");
     await user.click(screen.getByRole("button", { name: /create lease/i }));
 
-    // The over-ask is sent as typed (not clamped to 2) and the API's error shows.
-    await waitFor(() => expect(createLease).toHaveBeenCalledTimes(1));
-    expect(createLease.mock.calls[0][0].resources).toMatchObject({ gpus: 5 });
-    expect(await screen.findByText(/gpus exceeds the offer maximum/i)).toBeInTheDocument();
+    // Its own clear message — never the generic error text or the billing path.
+    expect(await screen.findByText(/at capacity/i)).toBeInTheDocument();
+    expect(screen.queryByText("host is full")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /top up your wallet/i })).not.toBeInTheDocument();
   });
 
   it("surfaces a host_offline failure with a helpful message", async () => {

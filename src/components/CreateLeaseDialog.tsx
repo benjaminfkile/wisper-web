@@ -5,6 +5,7 @@ import NextLink from "next/link";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
@@ -18,13 +19,13 @@ import { wisper, WisperError } from "@/lib/wisper/client";
 import { formatPricePerHour } from "@/lib/format";
 import { userdataHint } from "@/lib/os";
 import { isolationLabel } from "@/lib/isolation";
-import { offerHasGpu } from "@/lib/gpu";
+import { gpuBadgeLabel, offerHasGpu } from "@/lib/gpu";
+import { offerCpusLabel, offerMemoryLabel } from "@/lib/offer";
 import type {
   CatalogHost,
   CreateLeaseRequest,
   IsolationLevel,
   Lease,
-  LeaseResources,
   PricedImage,
   WispNetwork,
 } from "@/lib/wisper/types";
@@ -64,19 +65,13 @@ const TTL_UNITS: { value: number; label: string }[] = [
   { value: 3600, label: "hours" },
 ];
 
-/** Parse a string field to a positive integer, or `undefined` when blank/invalid. */
-function optionalPositiveInt(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  const n = Number(trimmed);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
-}
-
 /**
- * Dialog to launch a lease against a host+image picked from the catalog. Collects
- * network, optional resources, a TTL, and userdata, then POSTs /v1/leases. The
- * 402 `insufficient_funds` and `host_offline` failures are surfaced inline with a
- * top-up link so the user can act without losing their form.
+ * Dialog to launch a lease against a host+image picked from the catalog. A lease
+ * provisions EXACTLY the offer's size profile (shown read-only), so the form no
+ * longer collects compute — it collects network, isolation, a TTL, and userdata,
+ * then POSTs /v1/leases. The `insufficient_funds` (402), `at_capacity` (409, host
+ * full), and `host_offline` failures each get a distinct inline message; the
+ * billing one carries a top-up link so the user can act without losing their form.
  */
 export default function CreateLeaseDialog({
   open,
@@ -87,20 +82,11 @@ export default function CreateLeaseDialog({
 }: CreateLeaseDialogProps) {
   const [network, setNetwork] = useState<WispNetwork>("none");
   const [isolation, setIsolation] = useState<IsolationLevel | "">("");
-  const [cpu, setCpu] = useState("");
-  const [memoryMb, setMemoryMb] = useState("");
-  const [diskMb, setDiskMb] = useState("");
-  const [gpus, setGpus] = useState("0");
   const [ttlValue, setTtlValue] = useState("1");
   const [ttlUnit, setTtlUnit] = useState(3600);
   const [userdata, setUserdata] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<WisperError | null>(null);
-
-  // Whether this offer provides GPUs (older API / a CPU-only offer omits gpus).
-  const hasGpu = offerHasGpu(image);
-  // The offer's exact GPU count — the input's max; the API is authoritative on over-ask.
-  const maxGpus = image?.gpus ?? 0;
 
   // Isolation levels the selected image can be leased under (older API omits them).
   const isolationLevels = useMemo(() => image?.isolation_levels ?? [], [image]);
@@ -123,7 +109,6 @@ export default function CreateLeaseDialog({
     if (open) {
       setError(null);
       setSubmitting(false);
-      setGpus("0");
       const levels = image?.isolation_levels ?? [];
       const preferred = image?.default_isolation;
       setIsolation(preferred && levels.includes(preferred) ? preferred : levels[0] ?? "");
@@ -146,27 +131,15 @@ export default function CreateLeaseDialog({
     setSubmitting(true);
     setError(null);
 
-    const resources: LeaseResources = {};
-    const cpuVal = optionalPositiveInt(cpu);
-    const memVal = optionalPositiveInt(memoryMb);
-    const diskVal = optionalPositiveInt(diskMb);
-    if (cpuVal !== undefined) resources.cpu = cpuVal;
-    if (memVal !== undefined) resources.memory_mb = memVal;
-    if (diskVal !== undefined) resources.disk_mb = diskVal;
-    // GPUs only when this offer bears them and a positive count is asked. The
-    // ask is sent as typed — an over-ask is NOT pre-clamped; the API rejects it.
-    if (hasGpu) {
-      const gpuVal = optionalPositiveInt(gpus);
-      if (gpuVal !== undefined) resources.gpus = gpuVal;
-    }
-
+    // A lease provisions EXACTLY the offer's fixed profile — the body carries no
+    // resources/gpus (the API rejects free-form compute); the size rides on
+    // `host_image_id` alone.
     const body: CreateLeaseRequest = {
       host_id: host.host_id,
       host_image_id: image.host_image_id,
       network: selectedNetwork,
       ttl_seconds: ttlSeconds,
     };
-    if (Object.keys(resources).length > 0) body.resources = resources;
     if (userdata.trim()) body.userdata = userdata;
     if (isolation) body.isolation = isolation;
 
@@ -186,6 +159,9 @@ export default function CreateLeaseDialog({
 
   const insufficientFunds =
     error != null && (error.status === 402 || error.code === "insufficient_funds");
+  // Host full — a distinct, non-billing failure kept out of the generic path so
+  // it never reads as an error the user can fix by topping up.
+  const atCapacity = error != null && error.code === "at_capacity";
   const hostOffline = error != null && error.code === "host_offline";
 
   return (
@@ -246,47 +222,42 @@ export default function CreateLeaseDialog({
 
             <Box>
               <Typography variant="overline" color="text.secondary">
-                Resources (optional)
+                Size
               </Typography>
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 0.5 }}>
-                <TextField
-                  label="vCPUs"
-                  type="number"
-                  value={cpu}
-                  onChange={(e) => setCpu(e.target.value)}
-                  slotProps={{ htmlInput: { min: 1 } }}
-                  fullWidth
+              <Stack
+                direction="row"
+                spacing={0.5}
+                useFlexGap
+                sx={{ mt: 0.5, flexWrap: "wrap" }}
+              >
+                {/* The offer's FIXED profile, read-only — a lease provisions exactly
+                    this. "host default" when a dimension is left to the host. */}
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={offerCpusLabel(image.cpus)}
+                  aria-label={`vcpus ${offerCpusLabel(image.cpus)}`}
                 />
-                <TextField
-                  label="Memory (MB)"
-                  type="number"
-                  value={memoryMb}
-                  onChange={(e) => setMemoryMb(e.target.value)}
-                  slotProps={{ htmlInput: { min: 1 } }}
-                  fullWidth
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={offerMemoryLabel(image.memory_mb)}
+                  aria-label={`ram ${offerMemoryLabel(image.memory_mb)}`}
                 />
-                <TextField
-                  label="Disk (MB)"
-                  type="number"
-                  value={diskMb}
-                  onChange={(e) => setDiskMb(e.target.value)}
-                  slotProps={{ htmlInput: { min: 1 } }}
-                  fullWidth
-                />
+                {offerHasGpu(image) ? (
+                  <Chip
+                    size="small"
+                    color="secondary"
+                    variant="outlined"
+                    label={gpuBadgeLabel(host.gpu_classes, image.gpus)}
+                    aria-label={`gpus ${gpuBadgeLabel(host.gpu_classes, image.gpus)}`}
+                  />
+                ) : null}
               </Stack>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+                This lease provisions the offer&apos;s size.
+              </Typography>
             </Box>
-
-            {hasGpu && (
-              <TextField
-                label="GPUs"
-                type="number"
-                value={gpus}
-                onChange={(e) => setGpus(e.target.value)}
-                slotProps={{ htmlInput: { min: 0, max: maxGpus, step: 1 } }}
-                helperText={`Up to ${maxGpus} GPU${maxGpus === 1 ? "" : "s"} on this offer (0 = none).`}
-                fullWidth
-              />
-            )}
 
             <Stack direction="row" spacing={2}>
               <TextField
@@ -326,7 +297,7 @@ export default function CreateLeaseDialog({
             />
 
             {error && (
-              <Alert severity={insufficientFunds ? "warning" : "error"}>
+              <Alert severity={insufficientFunds || atCapacity ? "warning" : "error"}>
                 {insufficientFunds ? (
                   <>
                     Insufficient funds to start this lease.{" "}
@@ -335,6 +306,8 @@ export default function CreateLeaseDialog({
                     </Link>{" "}
                     and try again.
                   </>
+                ) : atCapacity ? (
+                  "This host is at capacity — try again when a lease frees up, or pick another host."
                 ) : hostOffline ? (
                   "This host is currently offline. Try another host, or try again later."
                 ) : (

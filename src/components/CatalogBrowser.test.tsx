@@ -266,4 +266,58 @@ describe("CatalogBrowser", () => {
     expect(screen.queryByLabelText(/^gpu /i)).toBeNull();
     expect(screen.queryByLabelText(/host gpus/i)).toBeNull();
   });
+
+  // ---- Capacity ------------------------------------------------------------
+
+  const CAPACITY_CATALOG: Catalog = {
+    data: [
+      {
+        host_id: "full1",
+        label: "Fullhouse",
+        region: "us-east",
+        online: true,
+        at_capacity: true,
+        active_leases: 5,
+        max_leases: 5,
+        images: [{ host_image_id: "fi1", image_ref: "ubuntu-22.04", price_cents_per_min: 5 }],
+      },
+      {
+        host_id: "free1",
+        label: "Roomy",
+        region: "us-east",
+        online: true,
+        at_capacity: false,
+        active_leases: 1,
+        max_leases: 8,
+        images: [{ host_image_id: "ri1", image_ref: "debian-12", price_cents_per_min: 3 }],
+      },
+    ],
+  };
+
+  it("badges a full host and gates its Lease button; leaves a roomy host free", async () => {
+    getCatalog.mockResolvedValue(CAPACITY_CATALOG);
+    render(<CatalogBrowser />);
+
+    const fullCard = (await screen.findByText("Fullhouse")).closest(".MuiCard-root") as HTMLElement;
+    // The full host is badged and shows its usage; its Lease button is disabled.
+    expect(within(fullCard).getByLabelText("at capacity")).toBeInTheDocument();
+    expect(within(fullCard).getByLabelText("host leases 5 / 5 leases")).toBeInTheDocument();
+    expect(within(fullCard).getByRole("button", { name: /^lease$/i })).toBeDisabled();
+
+    // The roomy host carries no capacity badge and stays leasable.
+    const roomyCard = screen.getByText("Roomy").closest(".MuiCard-root") as HTMLElement;
+    expect(within(roomyCard).queryByLabelText("at capacity")).toBeNull();
+    expect(within(roomyCard).getByLabelText("host leases 1 / 8 leases")).toBeInTheDocument();
+    expect(within(roomyCard).getByRole("button", { name: /^lease$/i })).toBeEnabled();
+  });
+
+  it("tolerates absent capacity fields — no badge, no usage line, Lease enabled", async () => {
+    getCatalog.mockResolvedValue(CATALOG);
+    render(<CatalogBrowser />);
+
+    const falconCard = (await screen.findByText("Falcon")).closest(".MuiCard-root") as HTMLElement;
+    expect(within(falconCard).queryByLabelText("at capacity")).toBeNull();
+    expect(within(falconCard).queryByLabelText(/host leases/i)).toBeNull();
+    expect(within(falconCard).getAllByRole("button", { name: /^lease$/i })[0]).toBeEnabled();
+  });
 });

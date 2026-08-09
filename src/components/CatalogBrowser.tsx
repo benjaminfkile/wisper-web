@@ -14,6 +14,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Snackbar from "@mui/material/Snackbar";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import BoltIcon from "@mui/icons-material/Bolt";
 import SearchIcon from "@mui/icons-material/Search";
@@ -35,6 +36,7 @@ import {
   offerHasGpu,
 } from "@/lib/gpu";
 import { offerCpusLabel, offerMemoryLabel } from "@/lib/offer";
+import { hostAtCapacity, hostLeaseUsageLabel } from "@/lib/capacity";
 import type { CatalogHost, Lease, PricedImage } from "@/lib/wisper/types";
 
 const ALL_REGIONS = "__all__";
@@ -256,6 +258,10 @@ export default function CatalogBrowser() {
         >
           {filtered.map(({ host, images }) => {
             const gpuSummary = gpuHostSummary(host.gpu_classes, host.gpu_count);
+            // Host full → badge it and gate its Lease buttons (a create would
+            // fast-fail with `at_capacity`). Absent field (older API) = not full.
+            const atCapacity = hostAtCapacity(host);
+            const usageLabel = hostLeaseUsageLabel(host.active_leases, host.max_leases);
             return (
             <Card key={host.host_id} variant="outlined">
               <CardContent>
@@ -273,6 +279,15 @@ export default function CatalogBrowser() {
                       aria-label={`operating system ${osLabel(host.os)}`}
                     />
                   ) : null}
+                  {atCapacity ? (
+                    <Chip
+                      size="small"
+                      label="at capacity"
+                      color="warning"
+                      variant="outlined"
+                      aria-label="at capacity"
+                    />
+                  ) : null}
                   {host.online != null ? (
                     <Chip
                       size="small"
@@ -285,6 +300,16 @@ export default function CatalogBrowser() {
                 {host.region && (
                   <Typography variant="body2" color="text.secondary" gutterBottom>
                     {host.region}
+                  </Typography>
+                )}
+                {usageLabel && (
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                    aria-label={`host leases ${usageLabel}`}
+                  >
+                    {usageLabel}
                   </Typography>
                 )}
                 {gpuSummary && (
@@ -353,14 +378,22 @@ export default function CatalogBrowser() {
                               : null}
                           </Stack>
                         </Box>
-                        <Button
-                          size="small"
-                          variant="contained"
-                          startIcon={<BoltIcon />}
-                          onClick={() => openLease(host, image)}
+                        <Tooltip
+                          title={atCapacity ? "Host is at capacity" : ""}
+                          disableHoverListener={!atCapacity}
                         >
-                          Lease
-                        </Button>
+                          <span>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              startIcon={<BoltIcon />}
+                              disabled={atCapacity}
+                              onClick={() => openLease(host, image)}
+                            >
+                              Lease
+                            </Button>
+                          </span>
+                        </Tooltip>
                       </Stack>
                     </Box>
                   ))}

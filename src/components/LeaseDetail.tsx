@@ -24,6 +24,8 @@ import LeaseExec from "./LeaseExec";
 import { formatDateTime, formatHms, formatUsd } from "@/lib/format";
 import { osLabel } from "@/lib/os";
 import { isolationLabel } from "@/lib/isolation";
+import { offerCpusLabel, offerMemoryLabel } from "@/lib/offer";
+import { gpuOfferLabel } from "@/lib/gpu";
 import { isTerminalLease, leaseStatusColor } from "@/lib/leaseStatus";
 import {
   baseTtlRemainingSeconds,
@@ -167,6 +169,11 @@ export default function LeaseDetail({ leaseId, pollMs = 5000 }: LeaseDetailProps
 
   const lease = sync?.lease ?? null;
   const terminal = lease ? isTerminalLease(lease.status) : false;
+  // Whether the lease reports any provisioned size profile (older API omits all
+  // three, in which case the Size field is hidden rather than showing defaults).
+  const hasProfile =
+    lease != null &&
+    (lease.cpus != null || lease.memory_mb != null || (lease.gpus ?? 0) > 0);
   const uptime = lease ? leaseUptimeSeconds(lease, nowMs) : 0;
   const ttlRemaining = sync
     ? terminal
@@ -258,29 +265,22 @@ export default function LeaseDetail({ leaseId, pollMs = 5000 }: LeaseDetailProps
                     {lease.isolation && (
                       <Field label="Isolation">{isolationLabel(lease.isolation)}</Field>
                     )}
-                    {(lease.resources?.gpus ?? 0) > 0 && (
-                      <Field label="GPUs">{lease.resources?.gpus}</Field>
+                    {hasProfile && (
+                      <Field label="Size">
+                        {[
+                          offerCpusLabel(lease.cpus),
+                          offerMemoryLabel(lease.memory_mb),
+                          gpuOfferLabel(lease.gpus),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Field>
                     )}
                     <Field label="TTL">{formatHms(lease.ttl_seconds)}</Field>
                     <Field label="Created">{formatDateTime(lease.created_at)}</Field>
                     <Field label="Started">{formatDateTime(lease.started_at)}</Field>
                     <Field label="Expires">{formatDateTime(lease.expires_at)}</Field>
                     {terminal && <Field label="Ended">{formatDateTime(lease.ended_at)}</Field>}
-                    {lease.resources && (
-                      <Field label="Resources">
-                        {[
-                          lease.resources.cpu != null ? `${lease.resources.cpu} vCPU` : null,
-                          lease.resources.memory_mb != null
-                            ? `${lease.resources.memory_mb} MB RAM`
-                            : null,
-                          lease.resources.disk_mb != null
-                            ? `${lease.resources.disk_mb} MB disk`
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ") || "—"}
-                      </Field>
-                    )}
                   </Box>
                   <Divider sx={{ my: 2 }} />
                   <Typography variant="caption" color="text.secondary">
