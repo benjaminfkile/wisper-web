@@ -7,6 +7,8 @@ import {
   formatPricePerHour,
   formatSignedUsd,
   formatUsd,
+  gbToMemoryMb,
+  memoryMbToGb,
   perHourToCentsPerMin,
 } from "./format";
 
@@ -36,6 +38,18 @@ describe("format helpers", () => {
     expect(centsPerMinToPerHour(5)).toBe(3);
     // Round-trips a clean hourly price exactly.
     expect(centsPerMinToPerHour(perHourToCentsPerMin(3))).toBeCloseTo(3, 2);
+  });
+
+  it("converts between memory_mb (MB) and GB, round-tripping cleanly", () => {
+    // 1 GB == 1024 MB on the wire; the UI enters/shows GB.
+    expect(gbToMemoryMb(1)).toBe(1024);
+    expect(gbToMemoryMb(8)).toBe(8192);
+    expect(memoryMbToGb(2048)).toBe(2);
+    // Fractional GB rounds to a whole MB.
+    expect(gbToMemoryMb(1.5)).toBe(1536);
+    expect(memoryMbToGb(1536)).toBe(1.5);
+    // Round-trips a whole-GB size exactly.
+    expect(memoryMbToGb(gbToMemoryMb(4))).toBe(4);
   });
 
   it("formatDuration renders hours and minutes compactly", () => {

@@ -23,7 +23,12 @@ import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { wisper, WisperError } from "@/lib/wisper/client";
-import { centsPerMinToPerHour, perHourToCentsPerMin } from "@/lib/format";
+import {
+  centsPerMinToPerHour,
+  gbToMemoryMb,
+  memoryMbToGb,
+  perHourToCentsPerMin,
+} from "@/lib/format";
 import { gpuOfferLabel } from "@/lib/gpu";
 import type { Host, HostImage, WispNetwork } from "@/lib/wisper/types";
 
@@ -65,8 +70,12 @@ interface Row {
   ttlMinutes: string;
   /** Networks offered for this image; must be a subset the host advertises. */
   networks: WispNetwork[];
-  /** Max GPUs leasable against this image, entered as text ("" / "0" = none). */
-  maxGpus: string;
+  /** vCPUs in this offer's size profile ("" = omit = host default). */
+  cpus: string;
+  /** RAM in this offer's size profile, entered in GB ("" = omit = host default). */
+  ramGb: string;
+  /** Exact GPUs in this offer's size profile, entered as text ("" / "0" = none). */
+  gpus: string;
   enabled: boolean;
 }
 
@@ -85,7 +94,12 @@ function toRow(image: HostImage, defaultNetworks: WispNetwork[]): Row {
       ? String(Math.max(1, Math.round(image.max_ttl_seconds / 60)))
       : DEFAULT_TTL_MINUTES,
     networks: image.networks?.length ? image.networks : defaultNetworks,
-    maxGpus: String(image.max_gpus ?? 0),
+    cpus: image.cpus != null ? String(image.cpus) : "",
+    ramGb:
+      image.memory_mb != null
+        ? String(Number(memoryMbToGb(image.memory_mb).toFixed(3)))
+        : "",
+    gpus: String(image.gpus ?? 0),
     enabled: image.enabled ?? true,
   };
 }
@@ -100,6 +114,33 @@ function nonNegativeInt(value: string): number | null {
   if (!value.trim()) return 0;
   const n = Number(value);
   return Number.isFinite(n) && Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+/**
+ * The parse of an optional size field: `empty` (blank = omit = host default),
+ * a concrete positive value, or `invalid`. Empty is a valid, distinct state —
+ * it must NOT collapse to `0` on the wire (an omitted field is the host default).
+ */
+type OptionalSize = "empty" | "invalid" | { value: number };
+
+/** Parse an optional whole-vCPU field: blank = host default; else a positive int. */
+function parseOptionalCpus(value: string): OptionalSize {
+  if (!value.trim()) return "empty";
+  const n = Number(value);
+  return Number.isFinite(n) && Number.isInteger(n) && n > 0 ? { value: n } : "invalid";
+}
+
+/**
+ * Parse an optional RAM field entered in GB into `memory_mb`: blank = host
+ * default; else a positive GB figure converted to a whole MB (must land on a
+ * positive integer MB — a sub-MB entry is rejected).
+ */
+function parseOptionalRamMb(value: string): OptionalSize {
+  if (!value.trim()) return "empty";
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return "invalid";
+  const mb = gbToMemoryMb(n);
+  return mb >= 1 ? { value: mb } : "invalid";
 }
 
 /**
@@ -172,7 +213,9 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
         pricePerHour: "",
         ttlMinutes: DEFAULT_TTL_MINUTES,
         networks: rowDefaultNetworks,
-        maxGpus: "0",
+        cpus: "",
+        ramGb: "",
+        gpus: "0",
         enabled: true,
       },
     ]);
@@ -185,11 +228,21 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
 
   /** Per-row GPU error message, or null when the value is acceptable. */
   function gpuError(row: Row): string | null {
-    const n = nonNegativeInt(row.maxGpus);
+    const n = nonNegativeInt(row.gpus);
     if (n == null) return "Whole number ≥ 0";
     // The API rejects (not clamps) an over-ask, so block it before the PUT.
     if (n > gpuCapacity) return `Max ${gpuCapacity} on this host`;
     return null;
+  }
+
+  /** Per-row vCPU error, or null when blank (host default) or a positive int. */
+  function cpuError(row: Row): string | null {
+    return parseOptionalCpus(row.cpus) === "invalid" ? "Whole number ≥ 1" : null;
+  }
+
+  /** Per-row RAM (GB) error, or null when blank (host default) or a positive size. */
+  function ramError(row: Row): string | null {
+    return parseOptionalRamMb(row.ramGb) === "invalid" ? "Positive number" : null;
   }
 
   const invalid = rows.some((r) => {
@@ -197,6 +250,8 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
     if (positiveInt(r.ttlMinutes) == null) return true;
     if (r.networks.length === 0) return true;
     if (gpuError(r) != null) return true;
+    if (cpuError(r) != null) return true;
+    if (ramError(r) != null) return true;
     if (r.pricePerHour.trim()) {
       const n = Number(r.pricePerHour);
       if (!Number.isFinite(n) || n < 0) return true;
@@ -218,10 +273,16 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
         max_ttl_seconds: (positiveInt(r.ttlMinutes) as number) * 60,
         networks: r.networks,
         // nonNegativeInt() is guaranteed non-null here (guarded by `invalid`).
-        max_gpus: nonNegativeInt(r.maxGpus) as number,
+        gpus: nonNegativeInt(r.gpus) as number,
         enabled: r.enabled,
       };
       if (r.id) image.host_image_id = r.id;
+      // Blank vCPU/RAM = omit (host default): an empty field must not send `0`.
+      // parse*() is guaranteed non-"invalid" here (guarded by `invalid`).
+      const cpu = parseOptionalCpus(r.cpus);
+      if (cpu !== "empty" && cpu !== "invalid") image.cpus = cpu.value;
+      const ram = parseOptionalRamMb(r.ramGb);
+      if (ram !== "empty" && ram !== "invalid") image.memory_mb = ram.value;
       return image;
     });
     try {
@@ -259,7 +320,9 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
               <TableCell sx={{ width: 170 }}>Price</TableCell>
               <TableCell sx={{ width: 130 }}>Max TTL (min)</TableCell>
               <TableCell sx={{ width: 210 }}>Networks</TableCell>
-              <TableCell sx={{ width: 150 }}>Max GPUs</TableCell>
+              <TableCell sx={{ width: 110 }}>vCPUs</TableCell>
+              <TableCell sx={{ width: 110 }}>RAM (GB)</TableCell>
+              <TableCell sx={{ width: 150 }}>GPUs</TableCell>
               <TableCell align="center" sx={{ width: 90 }}>
                 Enabled
               </TableCell>
@@ -269,7 +332,7 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7}>
+                <TableCell colSpan={9}>
                   <Typography color="text.secondary" variant="body2" sx={{ py: 1 }}>
                     No images yet. Add one to start offering it.
                   </Typography>
@@ -338,11 +401,52 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
                     </ToggleButtonGroup>
                   </TableCell>
                   <TableCell>
+                    <TextField
+                      value={row.cpus}
+                      onChange={(e) => updateRow(row.key, { cpus: e.target.value })}
+                      type="number"
+                      size="small"
+                      variant="standard"
+                      placeholder="default"
+                      error={cpuError(row) != null}
+                      helperText={cpuError(row) ?? (row.cpus.trim() ? undefined : "host default")}
+                      slotProps={{
+                        htmlInput: {
+                          min: 1,
+                          step: 1,
+                          "aria-label": `vcpus for ${row.name || "image"}`,
+                        },
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      value={row.ramGb}
+                      onChange={(e) => updateRow(row.key, { ramGb: e.target.value })}
+                      type="number"
+                      size="small"
+                      variant="standard"
+                      placeholder="default"
+                      error={ramError(row) != null}
+                      helperText={ramError(row) ?? (row.ramGb.trim() ? undefined : "host default")}
+                      slotProps={{
+                        htmlInput: {
+                          min: 0,
+                          step: 0.5,
+                          "aria-label": `ram gb for ${row.name || "image"}`,
+                        },
+                        input: {
+                          endAdornment: <InputAdornment position="end">GB</InputAdornment>,
+                        },
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
                     {gpuCapacity > 0 ? (
                       <Stack spacing={0.25}>
                         <TextField
-                          value={row.maxGpus}
-                          onChange={(e) => updateRow(row.key, { maxGpus: e.target.value })}
+                          value={row.gpus}
+                          onChange={(e) => updateRow(row.key, { gpus: e.target.value })}
                           type="number"
                           size="small"
                           variant="standard"
@@ -356,13 +460,13 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
                               min: 0,
                               max: gpuCapacity,
                               step: 1,
-                              "aria-label": `max gpus for ${row.name || "image"}`,
+                              "aria-label": `gpus for ${row.name || "image"}`,
                             },
                           }}
                         />
-                        {gpuOfferLabel(nonNegativeInt(row.maxGpus) ?? 0) && (
+                        {gpuOfferLabel(nonNegativeInt(row.gpus) ?? 0) && (
                           <Typography variant="caption" color="text.secondary">
-                            {gpuOfferLabel(nonNegativeInt(row.maxGpus) ?? 0)}
+                            {gpuOfferLabel(nonNegativeInt(row.gpus) ?? 0)}
                           </Typography>
                         )}
                       </Stack>
@@ -374,7 +478,7 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
                         variant="standard"
                         helperText="no GPU detected on this host"
                         slotProps={{
-                          htmlInput: { "aria-label": `max gpus for ${row.name || "image"}` },
+                          htmlInput: { "aria-label": `gpus for ${row.name || "image"}` },
                         }}
                       />
                     )}

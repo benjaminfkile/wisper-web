@@ -34,6 +34,7 @@ import {
   gpuHostSummary,
   offerHasGpu,
 } from "@/lib/gpu";
+import { offerCpusLabel, offerMemoryLabel } from "@/lib/offer";
 import type { CatalogHost, Lease, PricedImage } from "@/lib/wisper/types";
 
 const ALL_REGIONS = "__all__";
@@ -310,36 +311,47 @@ export default function CatalogBrowser() {
                               ? formatPricePerHour(image.price_cents_per_min)
                               : "Price on request"}
                           </Typography>
-                          {(offerHasGpu(image) ||
-                            (image.isolation_levels && image.isolation_levels.length > 0)) ? (
-                            <Stack
-                              direction="row"
-                              spacing={0.5}
-                              useFlexGap
-                              sx={{ mt: 0.75, flexWrap: "wrap" }}
-                            >
-                              {offerHasGpu(image) ? (
-                                <Chip
-                                  size="small"
-                                  color="secondary"
-                                  variant="outlined"
-                                  label={gpuBadgeLabel(host.gpu_classes, image.max_gpus)}
-                                  aria-label={`gpu ${gpuBadgeLabel(host.gpu_classes, image.max_gpus)}`}
-                                />
-                              ) : null}
-                              {(image.isolation_levels ?? []).length > 0
-                                ? sortIsolationLevels(image.isolation_levels ?? []).map((lvl) => (
-                                    <Chip
-                                      key={lvl}
-                                      size="small"
-                                      variant="outlined"
-                                      label={isolationLabel(lvl)}
-                                      aria-label={`isolation ${isolationLabel(lvl)}`}
-                                    />
-                                  ))
-                                : null}
-                            </Stack>
-                          ) : null}
+                          <Stack
+                            direction="row"
+                            spacing={0.5}
+                            useFlexGap
+                            sx={{ mt: 0.75, flexWrap: "wrap" }}
+                          >
+                            {/* Size profile — the price now reads as a price FOR
+                                something. "host default" when cpus/memory is null. */}
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={offerCpusLabel(image.cpus)}
+                              aria-label={`offer vcpus ${offerCpusLabel(image.cpus)}`}
+                            />
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={offerMemoryLabel(image.memory_mb)}
+                              aria-label={`offer ram ${offerMemoryLabel(image.memory_mb)}`}
+                            />
+                            {offerHasGpu(image) ? (
+                              <Chip
+                                size="small"
+                                color="secondary"
+                                variant="outlined"
+                                label={gpuBadgeLabel(host.gpu_classes, image.gpus)}
+                                aria-label={`gpu ${gpuBadgeLabel(host.gpu_classes, image.gpus)}`}
+                              />
+                            ) : null}
+                            {(image.isolation_levels ?? []).length > 0
+                              ? sortIsolationLevels(image.isolation_levels ?? []).map((lvl) => (
+                                  <Chip
+                                    key={lvl}
+                                    size="small"
+                                    variant="outlined"
+                                    label={isolationLabel(lvl)}
+                                    aria-label={`isolation ${isolationLabel(lvl)}`}
+                                  />
+                                ))
+                              : null}
+                          </Stack>
                         </Box>
                         <Button
                           size="small"

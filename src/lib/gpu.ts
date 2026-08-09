@@ -5,22 +5,22 @@ import type { CatalogHost, PricedImage } from "./wisper/types";
 // CPU-only offer) so components stay declarative and the strings can be asserted
 // directly in tests. Nothing here is shown in a zero-GPU world.
 
-/** Whether an offer leases any GPUs (`max_gpus` present and positive). */
-export function offerHasGpu(image: Pick<PricedImage, "max_gpus"> | null | undefined): boolean {
-  return (image?.max_gpus ?? 0) > 0;
+/** Whether an offer provides any GPUs (`gpus` present and positive). */
+export function offerHasGpu(image: Pick<PricedImage, "gpus"> | null | undefined): boolean {
+  return (image?.gpus ?? 0) > 0;
 }
 
 /**
  * Badge label for a GPU-bearing offer, combining the host's GPU class(es) with
- * the offer's `max_gpus` — e.g. `"A100 × 2"`, or `"A100, H100 × 2"` for a
- * multi-class host, falling back to `"GPU × 2"` when the host advertises no
- * class. Returns `null` when the offer leases no GPU, so callers render nothing.
+ * the offer's exact `gpus` count — e.g. `"A100 × 2"`, or `"A100, H100 × 2"` for
+ * a multi-class host, falling back to `"GPU × 2"` when the host advertises no
+ * class. Returns `null` when the offer provides no GPU, so callers render nothing.
  */
 export function gpuBadgeLabel(
   gpuClasses: readonly string[] | undefined,
-  maxGpus: number | undefined,
+  gpus: number | undefined,
 ): string | null {
-  const count = maxGpus ?? 0;
+  const count = gpus ?? 0;
   if (count <= 0) return null;
   const classes = (gpuClasses ?? []).filter(Boolean);
   const name = classes.length > 0 ? classes.join(", ") : "GPU";
@@ -28,14 +28,14 @@ export function gpuBadgeLabel(
 }
 
 /**
- * Read-side indicator for a GPU-bearing offer — e.g. `"GPU: up to 2"` — used on
+ * Read-side indicator for a GPU-bearing offer — e.g. `"2 GPUs"` (exact) — used on
  * the host's own image list where the host's class(es) are shown separately.
- * Returns `null` when the offer leases no GPU, so callers render nothing.
+ * Returns `null` when the offer provides no GPU, so callers render nothing.
  */
-export function gpuOfferLabel(maxGpus: number | undefined): string | null {
-  const count = maxGpus ?? 0;
+export function gpuOfferLabel(gpus: number | undefined): string | null {
+  const count = gpus ?? 0;
   if (count <= 0) return null;
-  return `GPU: up to ${count}`;
+  return `${count} ${count === 1 ? "GPU" : "GPUs"}`;
 }
 
 /**
@@ -82,6 +82,6 @@ export function catalogAdvertisesGpu(
     (h) =>
       (h.gpu_count ?? 0) > 0 ||
       (h.gpu_classes ?? []).some(Boolean) ||
-      (h.images ?? []).some((img) => (img.max_gpus ?? 0) > 0),
+      (h.images ?? []).some((img) => (img.gpus ?? 0) > 0),
   );
 }

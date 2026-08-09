@@ -169,6 +169,33 @@ describe("wisper client", () => {
     expect(normalizeCatalog(null)).toEqual({ data: [], next_cursor: undefined });
   });
 
+  it("normalizeCatalog carries offers through with OR without a size profile", () => {
+    // A sized offer (cpus/memory_mb/gpus) and a bare offer (older API omits them)
+    // both survive normalization untouched — absent profile fields degrade
+    // gracefully rather than being dropped or defaulted.
+    const sized = {
+      host_image_id: "i1",
+      image_ref: "cuda",
+      price_cents_per_min: 20,
+      cpus: 8,
+      memory_mb: 16384,
+      gpus: 2,
+    };
+    const bare = { host_image_id: "i2", image_ref: "cpu", price_cents_per_min: 5 };
+    const nulled = {
+      host_image_id: "i3",
+      image_ref: "def",
+      price_cents_per_min: 5,
+      cpus: null,
+      memory_mb: null,
+    };
+    const host = { host_id: "h1", label: "Falcon", images: [sized, bare, nulled] };
+    expect(normalizeCatalog({ data: [host] })).toEqual({
+      data: [host],
+      next_cursor: undefined,
+    });
+  });
+
   it("normalizeMyHosts unwraps { data, earnings }, a bare array, or legacy { hosts }", () => {
     const host = { id: "h1", name: "workstation" };
     const earnings = { currency: "USD", accrued_cents: 10, paid_cents: 0 };

@@ -184,14 +184,21 @@ describe("CatalogBrowser", () => {
         gpu_classes: ["A100"],
         gpu_count: 4,
         images: [
-          { host_image_id: "gi1", image_ref: "cuda-12", price_cents_per_min: 20, max_gpus: 2 },
+          {
+            host_image_id: "gi1",
+            image_ref: "cuda-12",
+            price_cents_per_min: 20,
+            cpus: 8,
+            memory_mb: 16384,
+            gpus: 2,
+          },
           { host_image_id: "gi2", image_ref: "cpu-only", price_cents_per_min: 5 },
         ],
       },
     ],
   };
 
-  it("renders a GPU badge only on offers with max_gpus > 0", async () => {
+  it("renders a GPU badge only on offers with gpus > 0", async () => {
     getCatalog.mockResolvedValue(GPU_CATALOG);
     render(<CatalogBrowser />);
 
@@ -202,6 +209,19 @@ describe("CatalogBrowser", () => {
     // (Match the badge's `class × count` label, not the "GPU class" filter.)
     expect(screen.getByText("cpu-only")).toBeInTheDocument();
     expect(screen.getAllByLabelText(/^gpu .*×/i)).toHaveLength(1);
+  });
+
+  it("renders each offer's size profile next to its price", async () => {
+    getCatalog.mockResolvedValue(GPU_CATALOG);
+    render(<CatalogBrowser />);
+
+    // The sized offer shows its vCPUs and RAM (16384 MB -> 16 GB) as chips.
+    expect(await screen.findByLabelText("offer vcpus 8 vCPU")).toBeInTheDocument();
+    expect(screen.getByLabelText("offer ram 16 GB")).toBeInTheDocument();
+
+    // The CPU-only offer omits the profile, so both dimensions read "host default".
+    expect(screen.getByLabelText("offer vcpus vCPU: host default")).toBeInTheDocument();
+    expect(screen.getByLabelText("offer ram RAM: host default")).toBeInTheDocument();
   });
 
   it("shows the host's GPU classes and count when present", async () => {

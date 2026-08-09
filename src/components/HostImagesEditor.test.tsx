@@ -67,7 +67,11 @@ describe("HostImagesEditor", () => {
       price_cents_per_min: 10, // $6.00/hr
       max_ttl_seconds: 3600,
       networks: ["none", "open"],
+      gpus: 0,
     });
+    // Blank vCPU/RAM = omit (host default) — NOT a 0 on the wire.
+    expect(body.images[0].cpus).toBeUndefined();
+    expect(body.images[0].memory_mb).toBeUndefined();
     expect(onSaved).toHaveBeenCalled();
     expect(await screen.findByText("Saved")).toBeInTheDocument();
   });
@@ -90,15 +94,15 @@ describe("HostImagesEditor", () => {
     expect(screen.getAllByLabelText("image name")).toHaveLength(1);
   });
 
-  it("disables the Max GPUs field with a hint when the host has no GPU", async () => {
+  it("disables the GPUs field with a hint when the host has no GPU", async () => {
     getHostImages.mockResolvedValue(IMAGES);
     render(<HostImagesEditor host={HOST} onSaved={() => {}} />);
-    const field = await screen.findByLabelText("max gpus for ubuntu-22.04");
+    const field = await screen.findByLabelText("gpus for ubuntu-22.04");
     expect(field).toBeDisabled();
     expect(screen.getByText("no GPU detected on this host")).toBeInTheDocument();
   });
 
-  it("enables Max GPUs and shows the detected class when gpu_count > 0", async () => {
+  it("enables GPUs and shows the detected class when gpu_count > 0", async () => {
     getHostImages.mockResolvedValue(IMAGES);
     const gpuHost: Host = {
       ...HOST,
@@ -106,35 +110,35 @@ describe("HostImagesEditor", () => {
       gpu_classes: ["nvidia-geforce-rtx-3050"],
     };
     render(<HostImagesEditor host={gpuHost} onSaved={() => {}} />);
-    const field = await screen.findByLabelText("max gpus for ubuntu-22.04");
+    const field = await screen.findByLabelText("gpus for ubuntu-22.04");
     expect(field).not.toBeDisabled();
     expect(screen.getByText("nvidia-geforce-rtx-3050")).toBeInTheDocument();
   });
 
-  it("includes max_gpus in the save payload", async () => {
+  it("includes the exact gpus in the save payload", async () => {
     const user = userEvent.setup();
     getHostImages.mockResolvedValue(IMAGES);
     updateHostImages.mockResolvedValue({ ...HOST });
     const gpuHost: Host = { ...HOST, gpu_count: 2, gpu_classes: ["A100"] };
     render(<HostImagesEditor host={gpuHost} onSaved={() => {}} />);
 
-    const field = await screen.findByLabelText("max gpus for ubuntu-22.04");
+    const field = await screen.findByLabelText("gpus for ubuntu-22.04");
     await user.clear(field);
     await user.type(field, "1");
     await user.click(screen.getByRole("button", { name: /save changes/i }));
 
     await waitFor(() => expect(updateHostImages).toHaveBeenCalledTimes(1));
     const [, body] = updateHostImages.mock.calls[0];
-    expect(body.images[0]).toMatchObject({ image_ref: "ubuntu-22.04", max_gpus: 1 });
+    expect(body.images[0]).toMatchObject({ image_ref: "ubuntu-22.04", gpus: 1 });
   });
 
-  it("blocks saving a max_gpus above the host's capacity", async () => {
+  it("blocks saving gpus above the host's capacity (gpu_count)", async () => {
     const user = userEvent.setup();
     getHostImages.mockResolvedValue(IMAGES);
     const gpuHost: Host = { ...HOST, gpu_count: 1, gpu_classes: ["A100"] };
     render(<HostImagesEditor host={gpuHost} onSaved={() => {}} />);
 
-    const field = await screen.findByLabelText("max gpus for ubuntu-22.04");
+    const field = await screen.findByLabelText("gpus for ubuntu-22.04");
     await user.clear(field);
     await user.type(field, "2");
 
@@ -142,17 +146,77 @@ describe("HostImagesEditor", () => {
     expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled();
   });
 
-  it("shows the 'GPU: up to N' indicator only when max_gpus > 0", async () => {
+  it("shows the exact 'N GPUs' indicator only when gpus > 0", async () => {
     const gpuHost: Host = { ...HOST, gpu_count: 2, gpu_classes: ["A100"] };
-    getHostImages.mockResolvedValue([{ ...IMAGES[0], max_gpus: 2 }]);
+    getHostImages.mockResolvedValue([{ ...IMAGES[0], gpus: 2 }]);
     const { unmount } = render(<HostImagesEditor host={gpuHost} onSaved={() => {}} />);
-    expect(await screen.findByText("GPU: up to 2")).toBeInTheDocument();
+    expect(await screen.findByText("2 GPUs")).toBeInTheDocument();
     unmount();
 
-    getHostImages.mockResolvedValue([{ ...IMAGES[0], max_gpus: 0 }]);
+    getHostImages.mockResolvedValue([{ ...IMAGES[0], gpus: 0 }]);
     render(<HostImagesEditor host={gpuHost} onSaved={() => {}} />);
     await screen.findByDisplayValue("ubuntu-22.04");
-    expect(screen.queryByText(/GPU: up to/)).not.toBeInTheDocument();
+    // The caption reads "<n> GPU(s)"; the "GPUs" column header must not match.
+    expect(screen.queryByText(/\d+ GPUs?/)).not.toBeInTheDocument();
+  });
+
+  it("seeds vCPUs and RAM (GB) from the offer's size profile", async () => {
+    getHostImages.mockResolvedValue([
+      { ...IMAGES[0], cpus: 4, memory_mb: 8192 },
+    ]);
+    render(<HostImagesEditor host={HOST} onSaved={() => {}} />);
+    // vCPUs seed directly; memory_mb (8192 MB) shows as 8 GB.
+    expect(await screen.findByLabelText("vcpus for ubuntu-22.04")).toHaveValue(4);
+    expect(screen.getByLabelText("ram gb for ubuntu-22.04")).toHaveValue(8);
+  });
+
+  it("shows 'host default' when the offer omits vCPUs/RAM", async () => {
+    getHostImages.mockResolvedValue(IMAGES);
+    render(<HostImagesEditor host={HOST} onSaved={() => {}} />);
+    await screen.findByLabelText("vcpus for ubuntu-22.04");
+    // Both blank fields hint the host-side default rather than a bare 0.
+    expect(screen.getAllByText("host default")).toHaveLength(2);
+  });
+
+  it("sends vCPUs and RAM converted to memory_mb, and omits blanks (no 0)", async () => {
+    const user = userEvent.setup();
+    getHostImages.mockResolvedValue(IMAGES);
+    updateHostImages.mockResolvedValue({ ...HOST });
+    render(<HostImagesEditor host={HOST} onSaved={() => {}} />);
+
+    const cpus = await screen.findByLabelText("vcpus for ubuntu-22.04");
+    await user.clear(cpus);
+    await user.type(cpus, "2");
+    const ram = screen.getByLabelText("ram gb for ubuntu-22.04");
+    await user.clear(ram);
+    await user.type(ram, "4");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(updateHostImages).toHaveBeenCalledTimes(1));
+    const [, body] = updateHostImages.mock.calls[0];
+    // 4 GB -> 4096 MB on the wire.
+    expect(body.images[0]).toMatchObject({ cpus: 2, memory_mb: 4096 });
+
+    // Now clear both again and re-save: blanks must NOT send a 0.
+    await user.clear(screen.getByLabelText("vcpus for ubuntu-22.04"));
+    await user.clear(screen.getByLabelText("ram gb for ubuntu-22.04"));
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+    await waitFor(() => expect(updateHostImages).toHaveBeenCalledTimes(2));
+    const [, body2] = updateHostImages.mock.calls[1];
+    expect(body2.images[0].cpus).toBeUndefined();
+    expect(body2.images[0].memory_mb).toBeUndefined();
+  });
+
+  it("blocks saving a non-positive vCPU count", async () => {
+    const user = userEvent.setup();
+    getHostImages.mockResolvedValue(IMAGES);
+    render(<HostImagesEditor host={HOST} onSaved={() => {}} />);
+
+    const cpus = await screen.findByLabelText("vcpus for ubuntu-22.04");
+    await user.clear(cpus);
+    await user.type(cpus, "0");
+    expect(screen.getByText("Whole number ≥ 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled();
   });
 
   it("offers all three networks when the host advertises no capability", async () => {

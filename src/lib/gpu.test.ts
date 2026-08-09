@@ -10,9 +10,9 @@ import {
 import type { CatalogHost } from "./wisper/types";
 
 describe("gpu helpers", () => {
-  it("offerHasGpu is true only for a positive max_gpus", () => {
-    expect(offerHasGpu({ max_gpus: 2 })).toBe(true);
-    expect(offerHasGpu({ max_gpus: 0 })).toBe(false);
+  it("offerHasGpu is true only for a positive gpus count", () => {
+    expect(offerHasGpu({ gpus: 2 })).toBe(true);
+    expect(offerHasGpu({ gpus: 0 })).toBe(false);
     expect(offerHasGpu({})).toBe(false);
     expect(offerHasGpu(undefined)).toBe(false);
     expect(offerHasGpu(null)).toBe(false);
@@ -27,9 +27,9 @@ describe("gpu helpers", () => {
     expect(gpuBadgeLabel(["A100"], undefined)).toBeNull();
   });
 
-  it("gpuOfferLabel reads 'GPU: up to N', or null when zero/absent", () => {
-    expect(gpuOfferLabel(2)).toBe("GPU: up to 2");
-    expect(gpuOfferLabel(1)).toBe("GPU: up to 1");
+  it("gpuOfferLabel reads the exact 'N GPU(s)', or null when zero/absent", () => {
+    expect(gpuOfferLabel(2)).toBe("2 GPUs");
+    expect(gpuOfferLabel(1)).toBe("1 GPU");
     expect(gpuOfferLabel(0)).toBeNull();
     expect(gpuOfferLabel(undefined)).toBeNull();
   });
@@ -70,7 +70,7 @@ describe("gpu helpers", () => {
         {
           host_id: "h",
           label: "A",
-          images: [{ host_image_id: "i", image_ref: "x", price_cents_per_min: 1, max_gpus: 4 }],
+          images: [{ host_image_id: "i", image_ref: "x", price_cents_per_min: 1, gpus: 4 }],
         },
       ]),
     ).toBe(true);
