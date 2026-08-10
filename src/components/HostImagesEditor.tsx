@@ -5,16 +5,12 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
+import FormLabel from "@mui/material/FormLabel";
 import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
+import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
@@ -81,6 +77,34 @@ interface Row {
 
 let syntheticId = 0;
 
+/**
+ * The host's REAL per-lease compute cap, read tolerantly from the host record.
+ * A cap counts as "known" only when the API surfaces a concrete positive number;
+ * `null`/`undefined`/`0`/non-finite (host offline, older API, or not advertised)
+ * all collapse to `null`, which the editor treats as "unknown" — unbounded inputs
+ * plus a warning. `maxRamGb` is `maxMemoryMb` expressed in the GB unit the editor
+ * uses; keep it a rounded, human figure so the cap label reads cleanly.
+ */
+export interface HostCaps {
+  maxCpus: number | null;
+  maxMemoryMb: number | null;
+  maxRamGb: number | null;
+}
+
+function positiveOrNull(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+export function readHostCaps(host: Host): HostCaps {
+  const maxCpus = positiveOrNull(host.host_max_cpus);
+  const maxMemoryMb = positiveOrNull(host.host_max_memory_mb);
+  return {
+    maxCpus,
+    maxMemoryMb,
+    maxRamGb: maxMemoryMb != null ? Number(memoryMbToGb(maxMemoryMb).toFixed(3)) : null,
+  };
+}
+
 function toRow(image: HostImage, defaultNetworks: WispNetwork[]): Row {
   return {
     key: image.host_image_id ?? image.image_ref,
@@ -144,6 +168,56 @@ function parseOptionalRamMb(value: string): OptionalSize {
 }
 
 /**
+ * Render an entered RAM (GB) value with its exact MB conversion inline, e.g.
+ * `"2"` -> `"2 GB = 2048 MB"`, so the GB/MB unit can't be confused silently.
+ * Returns `null` for a blank/invalid value (nothing meaningful to convert).
+ */
+function ramConversion(value: string): string | null {
+  const parsed = parseOptionalRamMb(value);
+  if (parsed === "empty" || parsed === "invalid") return null;
+  return `${Number(Number(value).toFixed(3))} GB = ${parsed.value} MB`;
+}
+
+/** One field's server-side validation failure (`validation_error` details entry). */
+interface ApiFieldError {
+  field?: string;
+  max?: number;
+  image_ref?: string;
+  index?: number;
+  message?: string;
+}
+
+/**
+ * Coerce a `validation_error`'s `details` into a flat list of field errors,
+ * tolerating either a single object or an array of them and ignoring anything
+ * that isn't a plain object. Only the keys we surface (`field`, `max`,
+ * `image_ref`, `index`, `message`) are read; unknown shapes yield an empty list.
+ */
+function coerceFieldErrors(details: unknown): ApiFieldError[] {
+  const entries = Array.isArray(details) ? details : details != null ? [details] : [];
+  const out: ApiFieldError[] = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    const o = entry as Record<string, unknown>;
+    out.push({
+      field: typeof o.field === "string" ? o.field : undefined,
+      max: typeof o.max === "number" ? o.max : undefined,
+      image_ref: typeof o.image_ref === "string" ? o.image_ref : undefined,
+      index: typeof o.index === "number" ? o.index : undefined,
+      message: typeof o.message === "string" ? o.message : undefined,
+    });
+  }
+  return out;
+}
+
+/** Render one field error verbatim: its message, or `field` + `max` if given. */
+function fieldErrorText(e: ApiFieldError): string {
+  if (e.message) return e.message;
+  const field = e.field ?? "value";
+  return e.max != null ? `${field}: max ${e.max}` : field;
+}
+
+/**
  * Editable table of a host's priced images. Hosts set a per-hour price, a max
  * TTL, the offered networks, and an enabled flag per image, then save — which
  * replaces the host's image list via PUT /v1/hosts/:id/images. Because that PUT
@@ -157,6 +231,14 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // Per-row messages parsed from a save's `validation_error` details, keyed by
+  // Row.key so the offending row shows the rejection inline (not just a banner).
+  const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
+
+  // The host's REAL per-lease compute cap. `null` = unknown (host offline / older
+  // API / not advertised): the editor drops the bounds and warns instead.
+  const caps = useMemo(() => readHostCaps(host), [host]);
+  const capsUnknown = caps.maxCpus == null || caps.maxMemoryMb == null;
 
   // Networks this host operator may offer per image (host capability), and the
   // subset a fresh row starts with. Derived from the host record; falls back to
@@ -178,6 +260,7 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
     setLoading(true);
     setError(null);
     setSaved(false);
+    setSaveErrors({});
     try {
       const images = await wisper.getHostImages(host.id);
       setRows(images.map((img) => toRow(img, rowDefaultNetworks)));
@@ -193,14 +276,25 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
     void load();
   }, [load]);
 
+  function clearSaveError(key: string) {
+    setSaveErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
   function updateRow(key: string, patch: Partial<Row>) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
     setSaved(false);
+    clearSaveError(key);
   }
 
   function removeRow(key: string) {
     setRows((prev) => prev.filter((r) => r.key !== key));
     setSaved(false);
+    clearSaveError(key);
   }
 
   function addRow() {
@@ -213,8 +307,11 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
         pricePerHour: "",
         ttlMinutes: DEFAULT_TTL_MINUTES,
         networks: rowDefaultNetworks,
-        cpus: "",
-        ramGb: "",
+        // Prefill a new offer with the host's REAL caps — concrete numbers a host
+        // can only turn DOWN, never a blank that silently means "host default".
+        // When caps are unknown, stay blank (the field is unbounded + warned).
+        cpus: caps.maxCpus != null ? String(caps.maxCpus) : "",
+        ramGb: caps.maxRamGb != null ? String(caps.maxRamGb) : "",
         gpus: "0",
         enabled: true,
       },
@@ -235,14 +332,29 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
     return null;
   }
 
-  /** Per-row vCPU error, or null when blank (host default) or a positive int. */
+  /**
+   * Per-row vCPU error, or null when acceptable. Blank = host default (ok); a
+   * non-positive/fractional entry is invalid; a value above the host's cap is
+   * blocked with the cap in the message (the same rejection the API would give),
+   * so the whole-list PUT never fails as a surprise.
+   */
   function cpuError(row: Row): string | null {
-    return parseOptionalCpus(row.cpus) === "invalid" ? "Whole number ≥ 1" : null;
+    const parsed = parseOptionalCpus(row.cpus);
+    if (parsed === "invalid") return "Whole number ≥ 1";
+    if (parsed !== "empty" && caps.maxCpus != null && parsed.value > caps.maxCpus) {
+      return `Max ${caps.maxCpus} (host cap)`;
+    }
+    return null;
   }
 
-  /** Per-row RAM (GB) error, or null when blank (host default) or a positive size. */
+  /** Per-row RAM (GB) error, or null when blank/valid; over-cap is blocked with the cap. */
   function ramError(row: Row): string | null {
-    return parseOptionalRamMb(row.ramGb) === "invalid" ? "Positive number" : null;
+    const parsed = parseOptionalRamMb(row.ramGb);
+    if (parsed === "invalid") return "Positive number";
+    if (parsed !== "empty" && caps.maxMemoryMb != null && parsed.value > caps.maxMemoryMb) {
+      return `Max ${caps.maxRamGb} GB (host cap)`;
+    }
+    return null;
   }
 
   const invalid = rows.some((r) => {
@@ -263,7 +375,11 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
     if (invalid || saving) return;
     setSaving(true);
     setError(null);
-    const images: HostImage[] = rows.map((r) => {
+    setSaveErrors({});
+    // Snapshot the row order the payload is built from so a `validation_error`
+    // whose details carry a positional `index` can be mapped back to a Row.key.
+    const orderedRows = rows;
+    const images: HostImage[] = orderedRows.map((r) => {
       const priceStr = r.pricePerHour.trim();
       const image: HostImage = {
         image_ref: r.name.trim(),
@@ -293,7 +409,29 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
       await load();
       setSaved(true);
     } catch (err) {
-      setError(err instanceof WisperError ? err.message : "Failed to save images.");
+      if (err instanceof WisperError) {
+        setError(err.message);
+        // Surface `validation_error` details verbatim (field + max), mapping each
+        // to the offending row by positional index or matching image_ref so the
+        // rejection lands where the host can act on it.
+        const fieldErrors = coerceFieldErrors(err.details);
+        if (fieldErrors.length > 0) {
+          const next: Record<string, string> = {};
+          for (const fe of fieldErrors) {
+            const row =
+              (fe.index != null ? orderedRows[fe.index] : undefined) ??
+              (fe.image_ref != null
+                ? orderedRows.find((r) => r.name.trim() === fe.image_ref)
+                : undefined);
+            if (!row) continue;
+            const text = fieldErrorText(fe);
+            next[row.key] = next[row.key] ? `${next[row.key]}; ${text}` : text;
+          }
+          setSaveErrors(next);
+        }
+      } else {
+        setError("Failed to save images.");
+      }
     } finally {
       setSaving(false);
     }
@@ -312,37 +450,62 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
 
   return (
     <Stack spacing={2}>
-      <TableContainer>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Image</TableCell>
-              <TableCell sx={{ width: 170 }}>Price</TableCell>
-              <TableCell sx={{ width: 130 }}>Max TTL (min)</TableCell>
-              <TableCell sx={{ width: 210 }}>Networks</TableCell>
-              <TableCell sx={{ width: 110 }}>vCPUs</TableCell>
-              <TableCell sx={{ width: 110 }}>RAM (GB)</TableCell>
-              <TableCell sx={{ width: 150 }}>GPUs</TableCell>
-              <TableCell align="center" sx={{ width: 90 }}>
-                Enabled
-              </TableCell>
-              <TableCell align="right" sx={{ width: 56 }} />
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9}>
-                  <Typography color="text.secondary" variant="body2" sx={{ py: 1 }}>
-                    No images yet. Add one to start offering it.
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            ) : (
-              rows.map((row) => (
-                <TableRow key={row.key}>
-                  <TableCell>
+      {capsUnknown && (
+        <Alert severity="warning">
+          This host isn&rsquo;t reporting its per-lease capacity right now
+          {host.online === false ? " (it looks offline)" : ""}, so vCPU and RAM
+          aren&rsquo;t bounded here. Saving image changes still requires the host to
+          be online.
+        </Alert>
+      )}
+
+      {rows.length === 0 ? (
+        <Typography color="text.secondary" variant="body2" sx={{ py: 1 }}>
+          No images yet. Add one to start offering it.
+        </Typography>
+      ) : (
+        <Stack spacing={2}>
+          {rows.map((row) => {
+            const cErr = cpuError(row);
+            const cpuHelp =
+              cErr ??
+              (caps.maxCpus != null
+                ? `max ${caps.maxCpus} (host cap)`
+                : row.cpus.trim()
+                  ? undefined
+                  : "host default");
+
+            const rErr = ramError(row);
+            const ramConv = ramConversion(row.ramGb);
+            const ramCap =
+              caps.maxRamGb != null
+                ? `max ${caps.maxRamGb} GB (host cap)`
+                : row.ramGb.trim()
+                  ? undefined
+                  : "host default";
+            const ramHelpParts = [ramConv, ramCap].filter(Boolean);
+            const ramHelp = rErr ?? (ramHelpParts.length ? ramHelpParts.join(" · ") : undefined);
+
+            const rowError = saveErrors[row.key];
+
+            return (
+              <Paper
+                key={row.key}
+                variant="outlined"
+                data-testid="offer-row"
+                sx={{ p: 1.5 }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 2,
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <Box data-testid="offer-field" sx={{ flex: "2 1 220px", minWidth: 200 }}>
                     <TextField
+                      label="Image"
                       value={row.name}
                       onChange={(e) => updateRow(row.key, { name: e.target.value })}
                       placeholder="ubuntu-22.04"
@@ -350,18 +513,21 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
                       variant="standard"
                       fullWidth
                       error={!row.name.trim()}
-                      slotProps={{ htmlInput: { "aria-label": "image name" } }}
+                      slotProps={{ inputLabel: { shrink: true }, htmlInput: { "aria-label": "image name" } }}
                     />
-                  </TableCell>
-                  <TableCell>
+                  </Box>
+                  <Box data-testid="offer-field" sx={{ flex: "1 1 150px", minWidth: 140 }}>
                     <TextField
+                      label="Price"
                       value={row.pricePerHour}
                       onChange={(e) => updateRow(row.key, { pricePerHour: e.target.value })}
                       type="number"
                       size="small"
                       variant="standard"
+                      fullWidth
                       placeholder="0.00"
                       slotProps={{
+                        inputLabel: { shrink: true },
                         htmlInput: { min: 0, step: 0.01, "aria-label": `price for ${row.name || "image"}` },
                         input: {
                           startAdornment: <InputAdornment position="start">$</InputAdornment>,
@@ -369,22 +535,28 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
                         },
                       }}
                     />
-                  </TableCell>
-                  <TableCell>
+                  </Box>
+                  <Box data-testid="offer-field" sx={{ flex: "1 1 140px", minWidth: 130 }}>
                     <TextField
+                      label="Max TTL (min)"
                       value={row.ttlMinutes}
                       onChange={(e) => updateRow(row.key, { ttlMinutes: e.target.value })}
                       type="number"
                       size="small"
                       variant="standard"
+                      fullWidth
                       placeholder="60"
                       error={positiveInt(row.ttlMinutes) == null}
                       slotProps={{
+                        inputLabel: { shrink: true },
                         htmlInput: { min: 1, step: 1, "aria-label": `max ttl minutes for ${row.name || "image"}` },
                       }}
                     />
-                  </TableCell>
-                  <TableCell>
+                  </Box>
+                  <Box data-testid="offer-field" sx={{ flex: "1 1 200px", minWidth: 180 }}>
+                    <FormLabel sx={{ display: "block", fontSize: "0.75rem", mb: 0.5 }}>
+                      Networks
+                    </FormLabel>
                     <ToggleButtonGroup
                       value={row.networks}
                       onChange={(_e, next: WispNetwork[]) =>
@@ -399,40 +571,48 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
                         </ToggleButton>
                       ))}
                     </ToggleButtonGroup>
-                  </TableCell>
-                  <TableCell>
+                  </Box>
+                  <Box data-testid="offer-field" sx={{ flex: "1 1 140px", minWidth: 130 }}>
                     <TextField
+                      label="vCPUs"
                       value={row.cpus}
                       onChange={(e) => updateRow(row.key, { cpus: e.target.value })}
                       type="number"
                       size="small"
                       variant="standard"
+                      fullWidth
                       placeholder="default"
-                      error={cpuError(row) != null}
-                      helperText={cpuError(row) ?? (row.cpus.trim() ? undefined : "host default")}
+                      error={cErr != null}
+                      helperText={cpuHelp}
                       slotProps={{
+                        inputLabel: { shrink: true },
                         htmlInput: {
                           min: 1,
                           step: 1,
+                          ...(caps.maxCpus != null ? { max: caps.maxCpus } : {}),
                           "aria-label": `vcpus for ${row.name || "image"}`,
                         },
                       }}
                     />
-                  </TableCell>
-                  <TableCell>
+                  </Box>
+                  <Box data-testid="offer-field" sx={{ flex: "1 1 200px", minWidth: 190 }}>
                     <TextField
+                      label="RAM (GB)"
                       value={row.ramGb}
                       onChange={(e) => updateRow(row.key, { ramGb: e.target.value })}
                       type="number"
                       size="small"
                       variant="standard"
+                      fullWidth
                       placeholder="default"
-                      error={ramError(row) != null}
-                      helperText={ramError(row) ?? (row.ramGb.trim() ? undefined : "host default")}
+                      error={rErr != null}
+                      helperText={ramHelp}
                       slotProps={{
+                        inputLabel: { shrink: true },
                         htmlInput: {
                           min: 0,
                           step: 0.5,
+                          ...(caps.maxRamGb != null ? { max: caps.maxRamGb } : {}),
                           "aria-label": `ram gb for ${row.name || "image"}`,
                         },
                         input: {
@@ -440,58 +620,62 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
                         },
                       }}
                     />
-                  </TableCell>
-                  <TableCell>
+                  </Box>
+                  <Box data-testid="offer-field" sx={{ flex: "1 1 150px", minWidth: 140 }}>
                     {gpuCapacity > 0 ? (
-                      <Stack spacing={0.25}>
-                        <TextField
-                          value={row.gpus}
-                          onChange={(e) => updateRow(row.key, { gpus: e.target.value })}
-                          type="number"
-                          size="small"
-                          variant="standard"
-                          placeholder="0"
-                          error={gpuError(row) != null}
-                          helperText={
-                            gpuError(row) ?? (gpuClasses.length ? gpuClasses.join(", ") : undefined)
-                          }
-                          slotProps={{
-                            htmlInput: {
-                              min: 0,
-                              max: gpuCapacity,
-                              step: 1,
-                              "aria-label": `gpus for ${row.name || "image"}`,
-                            },
-                          }}
-                        />
-                        {gpuOfferLabel(nonNegativeInt(row.gpus) ?? 0) && (
-                          <Typography variant="caption" color="text.secondary">
-                            {gpuOfferLabel(nonNegativeInt(row.gpus) ?? 0)}
-                          </Typography>
-                        )}
-                      </Stack>
+                      <TextField
+                        label="GPUs"
+                        value={row.gpus}
+                        onChange={(e) => updateRow(row.key, { gpus: e.target.value })}
+                        type="number"
+                        size="small"
+                        variant="standard"
+                        fullWidth
+                        placeholder="0"
+                        error={gpuError(row) != null}
+                        helperText={
+                          gpuError(row) ??
+                          gpuOfferLabel(nonNegativeInt(row.gpus) ?? 0) ??
+                          (gpuClasses.length ? gpuClasses.join(", ") : undefined)
+                        }
+                        slotProps={{
+                          inputLabel: { shrink: true },
+                          htmlInput: {
+                            min: 0,
+                            max: gpuCapacity,
+                            step: 1,
+                            "aria-label": `gpus for ${row.name || "image"}`,
+                          },
+                        }}
+                      />
                     ) : (
                       <TextField
+                        label="GPUs"
                         value="0"
                         disabled
                         size="small"
                         variant="standard"
+                        fullWidth
                         helperText="no GPU detected on this host"
                         slotProps={{
+                          inputLabel: { shrink: true },
                           htmlInput: { "aria-label": `gpus for ${row.name || "image"}` },
                         }}
                       />
                     )}
-                  </TableCell>
-                  <TableCell align="center">
-                    <Switch
-                      checked={row.enabled}
-                      onChange={(e) => updateRow(row.key, { enabled: e.target.checked })}
-                      size="small"
-                      slotProps={{ input: { "aria-label": `enable ${row.name || "image"}` } }}
-                    />
-                  </TableCell>
-                  <TableCell align="right">
+                  </Box>
+                  <Box
+                    data-testid="offer-field"
+                    sx={{ display: "flex", alignItems: "center", gap: 0.5, ml: "auto" }}
+                  >
+                    <Tooltip title={row.enabled ? "Offer enabled" : "Offer disabled"}>
+                      <Switch
+                        checked={row.enabled}
+                        onChange={(e) => updateRow(row.key, { enabled: e.target.checked })}
+                        size="small"
+                        slotProps={{ input: { "aria-label": `enable ${row.name || "image"}` } }}
+                      />
+                    </Tooltip>
                     <Tooltip title="Remove image">
                       <IconButton
                         size="small"
@@ -501,13 +685,18 @@ export default function HostImagesEditor({ host, onSaved }: HostImagesEditorProp
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+                  </Box>
+                </Box>
+                {rowError && (
+                  <Alert severity="error" sx={{ mt: 1 }}>
+                    {rowError}
+                  </Alert>
+                )}
+              </Paper>
+            );
+          })}
+        </Stack>
+      )}
 
       {error && <Alert severity="error">{error}</Alert>}
 

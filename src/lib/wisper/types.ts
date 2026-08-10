@@ -44,6 +44,15 @@
 // an older API that omits them degrades to the raw `cpus`/`memory_mb` (numbered
 // when present, "unspecified" when it carried no size), preserving the tolerant-
 // normalizer discipline.
+//
+// 2026-08-10 (host per-lease caps): the host now advertises its REAL per-lease
+// compute cap as `host_max_cpus` (int|null) and `host_max_memory_mb` (int|null,
+// whole MB) on `GET /v1/hosts/mine` and `GET /v1/hosts/:id/images`; both are
+// `null` when the host is offline / not advertising. A PUT /v1/hosts/:id/images
+// that exceeds a cap is REJECTED with `validation_error` carrying `{field, max}`
+// details. The image editor prefills new offers with these numbers, bounds the
+// inputs to them, and surfaces the rejection details verbatim. Both fields are
+// optional so an older API that omits them degrades to unbounded inputs.
 // ============================================================================
 
 /** Liveness (GET /healthz). */
@@ -424,6 +433,17 @@ export interface Host {
   gpu_classes?: string[];
   /** Total GPUs the host advertises, when present (older API omits it). */
   gpu_count?: number;
+  /**
+   * The host's REAL per-lease compute cap (its advertised capability), surfaced by
+   * `GET /v1/hosts/mine` and `GET /v1/hosts/:id/images`. The image editor prefills
+   * new offers with these concrete numbers and bounds the vCPU/RAM inputs to them
+   * (the API rejects a save that exceeds them). `null` — the host is offline or
+   * hasn't advertised a cap — so the editor falls back to unbounded inputs with a
+   * warning. Absent on an older API, which the editor tolerates as `null`.
+   * `host_max_memory_mb` is whole megabytes (the editor shows/enters it in GB).
+   */
+  host_max_cpus?: number | null;
+  host_max_memory_mb?: number | null;
   /**
    * Network modes the host's machine actually supports (its capability). A host
    * operator can only offer a subset of these per image. Absent on older API
