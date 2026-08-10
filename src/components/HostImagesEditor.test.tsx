@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import HostImagesEditor from "./HostImagesEditor";
+import HostImagesEditor, { readHostCaps } from "./HostImagesEditor";
 import type { Host, HostImage } from "@/lib/wisper/types";
 
 vi.mock("@/lib/wisper/client", async (importOriginal) => {
@@ -254,6 +254,125 @@ describe("HostImagesEditor", () => {
       .filter((b) => b.getAttribute("aria-pressed") === "true")
       .map((b) => b.textContent);
     expect(pressed).toEqual(["egress"]);
+  });
+
+  // --- host per-lease caps: prefill, bounds, conversion, offline, layout ---
+
+  const CAP_HOST: Host = { ...HOST, host_max_cpus: 8, host_max_memory_mb: 16384 };
+
+  it("readHostCaps reads caps and tolerates absent/null/zero (old API)", () => {
+    expect(readHostCaps(CAP_HOST)).toEqual({
+      maxCpus: 8,
+      maxMemoryMb: 16384,
+      maxRamGb: 16,
+    });
+    // Old API omits the fields entirely -> everything unknown.
+    expect(readHostCaps(HOST)).toEqual({ maxCpus: null, maxMemoryMb: null, maxRamGb: null });
+    // Explicit null / non-positive (offline / not advertised) also -> unknown.
+    expect(
+      readHostCaps({ ...HOST, host_max_cpus: null, host_max_memory_mb: 0 }),
+    ).toEqual({ maxCpus: null, maxMemoryMb: null, maxRamGb: null });
+  });
+
+  it("prefills a new offer's vCPU/RAM with the host's real caps", async () => {
+    const user = userEvent.setup();
+    getHostImages.mockResolvedValue([]); // start empty so only the new row exists
+    render(<HostImagesEditor host={CAP_HOST} onSaved={() => {}} />);
+
+    await user.click(await screen.findByRole("button", { name: /add image/i }));
+    // Concrete numbers seeded from the caps — never a blank "host default".
+    expect(screen.getByLabelText("vcpus for image")).toHaveValue(8);
+    expect(screen.getByLabelText("ram gb for image")).toHaveValue(16); // 16384 MB
+  });
+
+  it("blocks an over-cap vCPU value with the cap in the message", async () => {
+    const user = userEvent.setup();
+    getHostImages.mockResolvedValue(IMAGES);
+    render(<HostImagesEditor host={CAP_HOST} onSaved={() => {}} />);
+
+    const cpus = await screen.findByLabelText("vcpus for ubuntu-22.04");
+    await user.clear(cpus);
+    await user.type(cpus, "16"); // above the host cap of 8
+
+    expect(screen.getByText("Max 8 (host cap)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled();
+  });
+
+  it("blocks an over-cap RAM value with the cap in the message", async () => {
+    const user = userEvent.setup();
+    getHostImages.mockResolvedValue(IMAGES);
+    render(<HostImagesEditor host={CAP_HOST} onSaved={() => {}} />);
+
+    const ram = await screen.findByLabelText("ram gb for ubuntu-22.04");
+    await user.clear(ram);
+    await user.type(ram, "64"); // 64 GB > 16 GB host cap
+
+    expect(screen.getByText("Max 16 GB (host cap)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled();
+  });
+
+  it("shows the GB→MB conversion inline for a RAM value", async () => {
+    const user = userEvent.setup();
+    getHostImages.mockResolvedValue(IMAGES);
+    render(<HostImagesEditor host={HOST} onSaved={() => {}} />);
+
+    const ram = await screen.findByLabelText("ram gb for ubuntu-22.04");
+    await user.clear(ram);
+    await user.type(ram, "2");
+    // GB stays the input unit, but the exact MB is spelled out so it can't drift.
+    expect(screen.getByText(/2 GB = 2048 MB/)).toBeInTheDocument();
+  });
+
+  it("degrades to unbounded inputs with a warning when caps are unknown (offline)", async () => {
+    const user = userEvent.setup();
+    getHostImages.mockResolvedValue(IMAGES);
+    const offlineHost: Host = { ...HOST, online: false }; // no caps reported
+    render(<HostImagesEditor host={offlineHost} onSaved={() => {}} />);
+    await screen.findByDisplayValue("ubuntu-22.04");
+
+    expect(screen.getByText(/per-lease capacity/i)).toBeInTheDocument();
+
+    // Unbounded: a large value is accepted (no cap error), so the save isn't
+    // blocked by a bound the offline host can't report.
+    const cpus = screen.getByLabelText("vcpus for ubuntu-22.04");
+    await user.clear(cpus);
+    await user.type(cpus, "4096");
+    expect(screen.queryByText(/host cap/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save changes/i })).not.toBeDisabled();
+  });
+
+  it("maps a validation_error's field + max to the offending row on save", async () => {
+    const user = userEvent.setup();
+    const { WisperError } = await import("@/lib/wisper/client");
+    getHostImages.mockResolvedValue(IMAGES);
+    updateHostImages.mockRejectedValue(
+      new WisperError(400, "validation_error", "invalid images", "req-1", [
+        { index: 0, field: "memory_mb", max: 16384 },
+      ]),
+    );
+    render(<HostImagesEditor host={CAP_HOST} onSaved={() => {}} />);
+    await screen.findByDisplayValue("ubuntu-22.04");
+
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+    // The rejection detail is surfaced verbatim (field + max), on the row itself.
+    expect(await screen.findByText(/memory_mb: max 16384/)).toBeInTheDocument();
+  });
+
+  it("keeps every field visible on a narrow row (fields wrap, not compress)", async () => {
+    getHostImages.mockResolvedValue([{ ...IMAGES[0], cpus: 4, memory_mb: 8192 }]);
+    render(<HostImagesEditor host={HOST} onSaved={() => {}} />);
+
+    const rowEl = await screen.findByTestId("offer-row");
+    // Each field is its own wrapper so the row wraps to new lines at narrow widths
+    // instead of squeezing values out of view.
+    const fields = within(rowEl).getAllByTestId("offer-field");
+    expect(fields.length).toBeGreaterThanOrEqual(7);
+
+    // The values themselves remain rendered (visible), not clipped away.
+    expect(screen.getByLabelText("image name")).toHaveValue("ubuntu-22.04");
+    expect(screen.getByLabelText("price for ubuntu-22.04")).toHaveValue(3);
+    expect(screen.getByLabelText("vcpus for ubuntu-22.04")).toHaveValue(4);
+    expect(screen.getByLabelText("ram gb for ubuntu-22.04")).toHaveValue(8);
   });
 
   it("surfaces a save error", async () => {
