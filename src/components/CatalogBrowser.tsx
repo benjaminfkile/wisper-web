@@ -24,9 +24,11 @@ import { formatPricePerHour } from "@/lib/format";
 import { osLabel } from "@/lib/os";
 import {
   ISOLATION_ORDER,
-  isolationLabel,
+  isolationBlurb,
+  isolationStrengthLabel,
   offersAtLeast,
   sortIsolationLevels,
+  strongestIsolation,
 } from "@/lib/isolation";
 import {
   catalogAdvertisesGpu,
@@ -121,13 +123,11 @@ export default function CatalogBrowser() {
     const q = search.trim().toLowerCase();
     return (hosts ?? [])
       .filter((h) => region === ALL_REGIONS || h.region === region)
+      // Isolation is a HOST capability (every image can use any of the host's
+      // levels), so the min-isolation filter drops the whole host, not per-image.
+      .filter((h) => minIsolation === ANY_ISOLATION || offersAtLeast(h.isolation_levels, minIsolation))
       .map((h) => {
-        let images = h.images ?? [];
-        if (minIsolation !== ANY_ISOLATION) {
-          images = images.filter((img) =>
-            offersAtLeast(img.isolation_levels, minIsolation),
-          );
-        }
+        const images = h.images ?? [];
         if (!q) return { host: h, images };
         const hostMatch = h.label.toLowerCase().includes(q);
         const matchedImages = hostMatch
@@ -209,11 +209,13 @@ export default function CatalogBrowser() {
           sx={{ minWidth: 180 }}
         >
           <MenuItem value={ANY_ISOLATION}>Any isolation</MenuItem>
-          {ISOLATION_ORDER.map((lvl) => (
-            <MenuItem key={lvl} value={lvl}>
-              {isolationLabel(lvl)}
-            </MenuItem>
-          ))}
+          {ISOLATION_ORDER.slice()
+            .reverse()
+            .map((lvl) => (
+              <MenuItem key={lvl} value={lvl}>
+                {isolationStrengthLabel(lvl)}
+              </MenuItem>
+            ))}
         </TextField>
         {gpuAvailable && (
           <>
@@ -322,6 +324,40 @@ export default function CatalogBrowser() {
                     {gpuSummary}
                   </Typography>
                 )}
+                {/* Security isolation is a HOST property a renter pays for, so it
+                    gets its own labelled row: the strongest tier as a filled
+                    headline chip, the rest outlined, each explained on hover. */}
+                {(host.isolation_levels ?? []).length > 0 && (
+                  <Box sx={{ mt: 0.5, mb: 0.5 }}>
+                    <Typography variant="overline" color="text.secondary">
+                      Security isolation
+                    </Typography>
+                    <Stack
+                      direction="row"
+                      spacing={0.5}
+                      useFlexGap
+                      sx={{ mt: 0.25, flexWrap: "wrap" }}
+                    >
+                      {sortIsolationLevels(host.isolation_levels ?? [])
+                        .slice()
+                        .reverse()
+                        .map((lvl) => {
+                          const strongest = lvl === strongestIsolation(host.isolation_levels);
+                          return (
+                            <Tooltip key={lvl} title={isolationBlurb(lvl)}>
+                              <Chip
+                                size="small"
+                                color={strongest ? "success" : "default"}
+                                variant={strongest ? "filled" : "outlined"}
+                                label={isolationStrengthLabel(lvl)}
+                                aria-label={`isolation ${isolationStrengthLabel(lvl)}`}
+                              />
+                            </Tooltip>
+                          );
+                        })}
+                    </Stack>
+                  </Box>
+                )}
                 <Divider sx={{ my: 1.5 }} />
                 <Stack spacing={1.5}>
                   {images.map((image) => {
@@ -371,17 +407,6 @@ export default function CatalogBrowser() {
                                 aria-label={`gpu ${gpuBadgeLabel(host.gpu_classes, image.gpus)}`}
                               />
                             ) : null}
-                            {(image.isolation_levels ?? []).length > 0
-                              ? sortIsolationLevels(image.isolation_levels ?? []).map((lvl) => (
-                                  <Chip
-                                    key={lvl}
-                                    size="small"
-                                    variant="outlined"
-                                    label={isolationLabel(lvl)}
-                                    aria-label={`isolation ${isolationLabel(lvl)}`}
-                                  />
-                                ))
-                              : null}
                           </Stack>
                         </Box>
                         <Tooltip

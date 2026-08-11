@@ -142,13 +142,6 @@ export interface PricedImage {
   max_memory_mb?: number;
   max_pids?: number;
   /**
-   * Isolation levels this image can be leased under, strongest-offered set. When
-   * absent (older API) the create flow shows no isolation control and sends none.
-   */
-  isolation_levels?: IsolationLevel[];
-  /** The level pre-selected in the create flow; one of `isolation_levels`. */
-  default_isolation?: IsolationLevel;
-  /**
    * Fixed size profile of this offer — it is a SIZE at a price, like an instance
    * type. `cpus`/`memory_mb` are `null` (or absent) when the offer takes the
    * host-side default and are shown as "host default". `memory_mb` is whole
@@ -188,6 +181,15 @@ export interface CatalogHost {
   online?: boolean;
   /** OS the host's containers run, when advertised (older API omits it). */
   os?: HostOs;
+  /**
+   * Isolation levels this HOST can provide, weakest-to-strongest set (every image
+   * on the host can be leased under any of them). Returned per-host by the catalog
+   * — NOT per-image. When absent (older API) the UI shows no isolation control and
+   * the create flow sends none.
+   */
+  isolation_levels?: IsolationLevel[];
+  /** The level pre-selected in the create flow; one of `isolation_levels`. */
+  default_isolation?: IsolationLevel;
   /**
    * GPU classes this host advertises (e.g. `["A100", "H100"]`), when present.
    * Older API builds omit it, so consumers must tolerate `undefined` and show no

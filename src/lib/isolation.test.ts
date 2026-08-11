@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   ISOLATION_ORDER,
+  isolationBlurb,
   isolationLabel,
   isolationRank,
+  isolationStrength,
+  isolationStrengthLabel,
   offersAtLeast,
   sortIsolationLevels,
+  strongestIsolation,
 } from "./isolation";
 
 describe("isolationLabel", () => {
@@ -38,6 +42,40 @@ describe("sortIsolationLevels", () => {
       "sandboxed",
       "vm",
     ]);
+  });
+});
+
+describe("isolationStrength / isolationStrengthLabel", () => {
+  it("maps levels to plain strength words", () => {
+    expect(isolationStrength("shared")).toBe("Basic");
+    expect(isolationStrength("sandboxed")).toBe("Hardened");
+    expect(isolationStrength("vm")).toBe("Strongest");
+    expect(isolationStrength("enclave")).toBe("Other");
+  });
+
+  it("combines strength and mechanism", () => {
+    expect(isolationStrengthLabel("vm")).toBe("Strongest · VM isolation");
+    expect(isolationStrengthLabel("shared")).toBe("Basic · Shared kernel");
+  });
+});
+
+describe("isolationBlurb", () => {
+  it("gives a non-empty explanation for known levels and empty for unknown", () => {
+    expect(isolationBlurb("vm")).toMatch(/microVM|guest kernel/i);
+    expect(isolationBlurb("shared")).toMatch(/host's own kernel/i);
+    expect(isolationBlurb("enclave")).toBe("");
+  });
+});
+
+describe("strongestIsolation", () => {
+  it("returns the strongest advertised level", () => {
+    expect(strongestIsolation(["shared", "vm", "sandboxed"])).toBe("vm");
+    expect(strongestIsolation(["shared"])).toBe("shared");
+  });
+
+  it("returns undefined for an empty or absent set", () => {
+    expect(strongestIsolation([])).toBeUndefined();
+    expect(strongestIsolation(undefined)).toBeUndefined();
   });
 });
 

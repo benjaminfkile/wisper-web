@@ -12,6 +12,29 @@ const ISOLATION_LABELS: Record<IsolationLevel, string> = {
 };
 
 /**
+ * Plain-language strength word per level, so a renter who doesn't know what
+ * "gVisor" is can still rank what they're buying. Unknown (newer) levels are
+ * presumed strongest — mirrors {@link isolationRank}.
+ */
+const ISOLATION_STRENGTH: Record<IsolationLevel, string> = {
+  shared: "Basic",
+  sandboxed: "Hardened",
+  vm: "Strongest",
+};
+
+/**
+ * One-line "what am I actually getting" description per level, for tooltips and
+ * the create-lease helper text.
+ */
+const ISOLATION_BLURB: Record<IsolationLevel, string> = {
+  shared:
+    "Runs on the host's own kernel with container isolation only — the weakest boundary. Fine for trusted workloads.",
+  sandboxed:
+    "Runs on gVisor's user-space kernel, so a guest kernel exploit can't reach the host kernel directly.",
+  vm: "Runs in a hardware-virtualized microVM with its own guest kernel — the strongest boundary, like separate cloud tenants.",
+};
+
+/**
  * Known levels weakest-to-strongest. The index doubles as each level's rank so
  * "at least this strong" comparisons stay a single source of truth.
  */
@@ -20,6 +43,27 @@ export const ISOLATION_ORDER: IsolationLevel[] = ["shared", "sandboxed", "vm"];
 /** Short human label for an isolation level (e.g. "gVisor sandbox"). */
 export function isolationLabel(level: string): string {
   return ISOLATION_LABELS[level as IsolationLevel] ?? level;
+}
+
+/** Plain strength word (e.g. "Strongest") — falls back to "Other" for unknowns. */
+export function isolationStrength(level: string): string {
+  return ISOLATION_STRENGTH[level as IsolationLevel] ?? "Other";
+}
+
+/** Strength word + mechanism, e.g. "Strongest · VM isolation". */
+export function isolationStrengthLabel(level: string): string {
+  return `${isolationStrength(level)} · ${isolationLabel(level)}`;
+}
+
+/** One-sentence explanation of what a level protects against, for tooltips. */
+export function isolationBlurb(level: string): string {
+  return ISOLATION_BLURB[level as IsolationLevel] ?? "";
+}
+
+/** The strongest level a host offers (for the headline host badge). */
+export function strongestIsolation(levels: readonly string[] | undefined): string | undefined {
+  const sorted = sortIsolationLevels(levels ?? []);
+  return sorted.length > 0 ? sorted[sorted.length - 1] : undefined;
 }
 
 /**

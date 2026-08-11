@@ -194,42 +194,50 @@ describe("CreateLeaseDialog", () => {
     expect(placeholder).toMatch(/windows/i);
   });
 
-  it("omits the isolation control and field when the image advertises none", () => {
+  it("omits the isolation control and field when the host advertises none", () => {
     renderDialog();
-    expect(screen.queryByLabelText(/Isolation/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/isolation/i)).not.toBeInTheDocument();
   });
 
-  it("defaults isolation to default_isolation and posts the chosen level", async () => {
+  it("defaults isolation to the host's default_isolation and posts the chosen level", async () => {
     const user = userEvent.setup();
     createLease.mockResolvedValue({ id: "l3", status: "pending" });
     renderDialog({
-      image: {
-        ...image,
+      host: {
+        ...host,
         isolation_levels: ["shared", "sandboxed", "vm"],
         default_isolation: "sandboxed",
       },
     });
 
-    // Defaults to the host's default_isolation.
-    expect(screen.getByLabelText(/Isolation/i)).toHaveTextContent("gVisor sandbox");
+    // Defaults to the host's declared default_isolation.
+    expect(screen.getByLabelText(/security isolation/i)).toHaveTextContent("Hardened · gVisor sandbox");
 
     // Pick a stronger level and submit.
-    await user.click(screen.getByLabelText(/Isolation/i));
-    await user.click(await screen.findByRole("option", { name: "VM isolation" }));
+    await user.click(screen.getByLabelText(/security isolation/i));
+    await user.click(await screen.findByRole("option", { name: "Strongest · VM isolation" }));
     await user.click(screen.getByRole("button", { name: /create lease/i }));
 
     await waitFor(() => expect(createLease).toHaveBeenCalledTimes(1));
     expect(createLease).toHaveBeenCalledWith(expect.objectContaining({ isolation: "vm" }));
   });
 
-  it("renders a read-only Shared indicator for a shared-only host", async () => {
+  it("defaults to the strongest tier when the host declares no default", async () => {
+    createLease.mockResolvedValue({ id: "l3b", status: "pending" });
+    renderDialog({ host: { ...host, isolation_levels: ["shared", "sandboxed", "vm"] } });
+
+    // No default_isolation → lead with the strongest tier the host offers.
+    expect(screen.getByLabelText(/security isolation/i)).toHaveTextContent("Strongest · VM isolation");
+  });
+
+  it("renders a read-only indicator for a single-tier host", async () => {
     const user = userEvent.setup();
     createLease.mockResolvedValue({ id: "l4", status: "pending" });
-    renderDialog({ image: { ...image, isolation_levels: ["shared"] } });
+    renderDialog({ host: { ...host, isolation_levels: ["shared"] } });
 
     // Read-only text field, not an interactive picker.
-    const field = screen.getByLabelText(/Isolation/i);
-    expect(field).toHaveValue("Shared kernel");
+    const field = screen.getByLabelText(/security isolation/i);
+    expect(field).toHaveValue("Basic · Shared kernel");
     expect(field).toHaveAttribute("readonly");
 
     await user.click(screen.getByRole("button", { name: /create lease/i }));

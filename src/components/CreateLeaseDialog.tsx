@@ -18,7 +18,11 @@ import Typography from "@mui/material/Typography";
 import { wisper, WisperError } from "@/lib/wisper/client";
 import { formatPricePerHour } from "@/lib/format";
 import { userdataHint } from "@/lib/os";
-import { isolationLabel } from "@/lib/isolation";
+import {
+  isolationBlurb,
+  isolationStrengthLabel,
+  sortIsolationLevels,
+} from "@/lib/isolation";
 import { gpuBadgeLabel, offerHasGpu } from "@/lib/gpu";
 import { offerCpusLabel, offerMemoryLabel, resolveSize } from "@/lib/offer";
 import type {
@@ -88,8 +92,11 @@ export default function CreateLeaseDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<WisperError | null>(null);
 
-  // Isolation levels the selected image can be leased under (older API omits them).
-  const isolationLevels = useMemo(() => image?.isolation_levels ?? [], [image]);
+  // Isolation is a HOST capability (older API omits it), weakest-to-strongest.
+  const isolationLevels = useMemo(
+    () => sortIsolationLevels(host?.isolation_levels ?? []),
+    [host],
+  );
   // A single advertised level (e.g. shared-only) is shown read-only — nothing to pick.
   const isolationReadOnly = isolationLevels.length === 1;
 
@@ -109,9 +116,14 @@ export default function CreateLeaseDialog({
     if (open) {
       setError(null);
       setSubmitting(false);
-      const levels = image?.isolation_levels ?? [];
-      const preferred = image?.default_isolation;
-      setIsolation(preferred && levels.includes(preferred) ? preferred : levels[0] ?? "");
+      const levels = sortIsolationLevels(host?.isolation_levels ?? []);
+      const preferred = host?.default_isolation;
+      // Default to the host's declared default; else lead with its STRONGEST tier.
+      setIsolation(
+        preferred && levels.includes(preferred)
+          ? preferred
+          : ((levels[levels.length - 1] ?? "") as IsolationLevel | ""),
+      );
       // Default the network to one the offer actually advertises (its first),
       // never to a mode it lacks — an over-ask is rejected by the API.
       setNetwork(offerNetworks(image)[0]);
@@ -201,26 +213,34 @@ export default function CreateLeaseDialog({
             {isolationLevels.length > 0 &&
               (isolationReadOnly ? (
                 <TextField
-                  label="Isolation"
-                  value={isolationLabel(isolationLevels[0])}
+                  label="Security isolation"
+                  value={isolationStrengthLabel(isolationLevels[0])}
                   slotProps={{ input: { readOnly: true } }}
-                  helperText="This host offers a single isolation level."
+                  helperText={isolationBlurb(isolationLevels[0])}
                   fullWidth
                 />
               ) : (
                 <TextField
                   select
-                  label="Isolation"
+                  label="Security isolation"
                   value={isolation}
                   onChange={(e) => setIsolation(e.target.value as IsolationLevel)}
-                  helperText="How strongly this lease is isolated from the host."
+                  helperText={
+                    isolation
+                      ? isolationBlurb(isolation)
+                      : "How strongly this lease is isolated from the host machine."
+                  }
                   fullWidth
                 >
-                  {isolationLevels.map((lvl) => (
-                    <MenuItem key={lvl} value={lvl}>
-                      {isolationLabel(lvl)}
-                    </MenuItem>
-                  ))}
+                  {/* Strongest first — the safest option leads the list. */}
+                  {isolationLevels
+                    .slice()
+                    .reverse()
+                    .map((lvl) => (
+                      <MenuItem key={lvl} value={lvl}>
+                        {isolationStrengthLabel(lvl)}
+                      </MenuItem>
+                    ))}
                 </TextField>
               ))}
 
