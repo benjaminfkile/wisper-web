@@ -60,7 +60,7 @@ function toSync(lease: Lease, nowMs: number): Sync {
     lease,
     syncedAtMs: nowMs,
     baseRemaining: baseTtlRemainingSeconds(lease, nowMs),
-    baseCost: lease.cost_cents ?? 0,
+    baseCost: lease.cost_cents_so_far ?? lease.cost_cents ?? 0,
     rate: costRateCentsPerSecond(lease, nowMs),
   };
 }

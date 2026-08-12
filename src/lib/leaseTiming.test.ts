@@ -43,6 +43,20 @@ describe("leaseUptimeSeconds", () => {
     expect(leaseUptimeSeconds(ended, START_MS + 10 * 60_000)).toBe(60);
   });
 
+  it("freezes a terminal lease at billed seconds when ended_at is missing (never ticks)", () => {
+    // Defense in depth: even if the API omits ended_at, a terminal lease must not
+    // count up with the wall clock — it freezes at billable_seconds.
+    const ended = lease({ status: "ended", ended_at: undefined, billable_seconds: 159 });
+    expect(leaseUptimeSeconds(ended, START_MS + 10 * 60_000)).toBe(159);
+    // Two different "now"s produce the SAME value — proof it is not ticking.
+    expect(leaseUptimeSeconds(ended, START_MS + 99 * 60_000)).toBe(159);
+  });
+
+  it("freezes a terminal lease at 0 when it has neither ended_at nor billable_seconds", () => {
+    const ended = lease({ status: "ended", ended_at: undefined });
+    expect(leaseUptimeSeconds(ended, START_MS + 10 * 60_000)).toBe(0);
+  });
+
   it("never goes negative", () => {
     expect(leaseUptimeSeconds(lease(), START_MS - 5000)).toBe(0);
   });

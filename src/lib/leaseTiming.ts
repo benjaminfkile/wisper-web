@@ -16,12 +16,24 @@ export function leaseUptimeSeconds(lease: Lease, nowMs: number): number {
   if (!lease.started_at) return 0;
   const startMs = Date.parse(lease.started_at);
   if (Number.isNaN(startMs)) return 0;
-  let endMs = nowMs;
-  if (isTerminalLease(lease.status) && lease.ended_at) {
-    const parsed = Date.parse(lease.ended_at);
-    if (!Number.isNaN(parsed)) endMs = parsed;
+
+  // A terminal lease's runtime is FIXED — it must never advance with the wall
+  // clock (a ticking counter on an ended lease reads as overbilling even when the
+  // server froze billing long ago). Prefer ended_at; if the API ever omits it,
+  // freeze at the billed seconds (bounded, non-ticking) rather than counting up
+  // from started_at to now. Never fall through to the live wall-clock branch.
+  if (isTerminalLease(lease.status)) {
+    if (lease.ended_at) {
+      const endMs = Date.parse(lease.ended_at);
+      if (!Number.isNaN(endMs)) return Math.max(0, Math.floor((endMs - startMs) / 1000));
+    }
+    if (typeof lease.billable_seconds === "number") {
+      return Math.max(0, Math.floor(lease.billable_seconds));
+    }
+    return 0;
   }
-  return Math.max(0, Math.floor((endMs - startMs) / 1000));
+
+  return Math.max(0, Math.floor((nowMs - startMs) / 1000));
 }
 
 /**
@@ -67,8 +79,9 @@ export function costRateCentsPerSecond(lease: Lease, nowMs: number): number {
     return Math.max(0, lease.price_cents_per_min / 60);
   }
   const uptime = leaseUptimeSeconds(lease, nowMs);
-  if (uptime > 0 && typeof lease.cost_cents === "number") {
-    return Math.max(0, lease.cost_cents / uptime);
+  const accrued = lease.cost_cents_so_far ?? lease.cost_cents;
+  if (uptime > 0 && typeof accrued === "number") {
+    return Math.max(0, accrued / uptime);
   }
   return 0;
 }

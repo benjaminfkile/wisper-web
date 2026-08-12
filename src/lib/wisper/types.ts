@@ -292,7 +292,14 @@ export interface Lease {
   started_at?: string;
   expires_at?: string;
   ended_at?: string;
-  /** Accrued cost so far, in cents. */
+  /** Billed seconds so far, excluding suspended gaps (frozen once terminal). */
+  billable_seconds?: number;
+  /**
+   * Accrued cost so far, in cents — the API field is `cost_cents_so_far`. The
+   * legacy `cost_cents` is kept as a tolerated alias for older responses; read
+   * `cost_cents_so_far ?? cost_cents`.
+   */
+  cost_cents_so_far?: number;
   cost_cents?: number;
   /**
    * Effective price for this lease, in cents per minute. When present the detail
