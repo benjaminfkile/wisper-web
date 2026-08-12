@@ -40,6 +40,12 @@ export interface AuthContextValue {
   hasRole: (role: Role) => boolean;
   signIn: (email: string, password: string) => Promise<void>;
   /**
+   * Finish an admin-invited sign-in by setting a permanent password (answers the
+   * NEW_PASSWORD_REQUIRED challenge raised by {@link signIn}). Establishes the
+   * session on success, exactly like a normal sign-in.
+   */
+  completeNewPassword: (email: string, newPassword: string) => Promise<void>;
+  /**
    * Sign in with a wisper-api API key (local-dev fallback when Cognito is not
    * configured). Holds the key, attaches it as the bearer token, and validates
    * it via GET /v1/me — clearing the held key if the backend rejects it.
@@ -144,6 +150,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [establish],
   );
 
+  const completeNewPassword = useCallback(
+    async (email: string, newPassword: string) => {
+      const jwt = await cognito.completeNewPassword(email, newPassword);
+      await establish(jwt, "cognito");
+    },
+    [establish],
+  );
+
   const signInWithApiKey = useCallback(
     async (key: string) => {
       apiKey.storeApiKey(key);
@@ -183,6 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isApiKeySession: authMethod === "apiKey",
       hasRole,
       signIn,
+      completeNewPassword,
       signInWithApiKey,
       signUp: cognito.signUp,
       confirmSignUp: cognito.confirmSignUp,
@@ -190,7 +205,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refresh,
     }),
-    [status, user, token, authMethod, hasRole, signIn, signInWithApiKey, signOut, refresh],
+    [
+      status,
+      user,
+      token,
+      authMethod,
+      hasRole,
+      signIn,
+      completeNewPassword,
+      signInWithApiKey,
+      signOut,
+      refresh,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

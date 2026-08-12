@@ -15,7 +15,7 @@ import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { isAuthConfigured } from "@/lib/auth/cognito";
+import { AuthError, isAuthConfigured } from "@/lib/auth/cognito";
 import { WisperError } from "@/lib/wisper/client";
 
 type Mode = "signin" | "signup";
@@ -33,9 +33,29 @@ function apiKeyErrorMessage(err: unknown): string {
   return errorMessage(err);
 }
 
+/**
+ * Message for a failed sign-up. An invite-only pool rejects self sign-up with a
+ * raw Cognito error; translate that into a clear "ask for an invite" note rather
+ * than the cryptic upstream text.
+ */
+function signUpErrorMessage(err: unknown): string {
+  const raw = errorMessage(err);
+  if (/not\s*permitted|not\s*allowed|disabled/i.test(raw) && /sign\s*up|user\s*pool/i.test(raw)) {
+    return "This Wisper deployment is invite-only. Ask an administrator to create your account, then sign in.";
+  }
+  return raw;
+}
+
 export default function LoginPage() {
-  const { status, signIn, signInWithApiKey, signUp, confirmSignUp, resendConfirmationCode } =
-    useAuth();
+  const {
+    status,
+    signIn,
+    completeNewPassword,
+    signInWithApiKey,
+    signUp,
+    confirmSignUp,
+    resendConfirmationCode,
+  } = useAuth();
   const router = useRouter();
 
   const [mode, setMode] = useState<Mode>("signin");
@@ -46,6 +66,9 @@ export default function LoginPage() {
   // Present once a sign-up needs email confirmation.
   const [needsConfirm, setNeedsConfirm] = useState(false);
   const [code, setCode] = useState("");
+  // Present when an admin-invited account must set a permanent password.
+  const [needsNewPassword, setNeedsNewPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -63,6 +86,8 @@ export default function LoginPage() {
     setInfo(null);
     setNeedsConfirm(false);
     setCode("");
+    setNeedsNewPassword(false);
+    setNewPassword("");
   };
 
   const onSignIn = async (e: FormEvent) => {
@@ -73,6 +98,34 @@ export default function LoginPage() {
       await signIn(email, password);
       router.replace("/");
     } catch (err) {
+      // An admin-invited account must set a permanent password before it's in.
+      // Swap to the new-password step instead of dead-ending on the challenge.
+      if (err instanceof AuthError && err.code === "new_password_required") {
+        setNeedsNewPassword(true);
+        setInfo("Welcome! Choose a permanent password to finish setting up your account.");
+        setError(null);
+      } else {
+        setError(errorMessage(err));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onSetNewPassword = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await completeNewPassword(email, newPassword);
+      router.replace("/");
+    } catch (err) {
+      // The stashed challenge is gone (e.g. page reloaded): send them back to
+      // sign in with the temporary password again.
+      if (err instanceof AuthError && err.code === "challenge_expired") {
+        setNeedsNewPassword(false);
+        setNewPassword("");
+      }
       setError(errorMessage(err));
     } finally {
       setBusy(false);
@@ -109,7 +162,7 @@ export default function LoginPage() {
         setInfo("We emailed you a confirmation code. Enter it below to finish signing up.");
       }
     } catch (err) {
-      setError(errorMessage(err));
+      setError(signUpErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -210,7 +263,26 @@ export default function LoginPage() {
               </Alert>
             )}
 
-            {needsConfirm ? (
+            {needsNewPassword ? (
+          <Box component="form" onSubmit={onSetNewPassword}>
+            <Stack spacing={2}>
+              <TextField
+                label="New password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                autoFocus
+                fullWidth
+                autoComplete="new-password"
+                helperText="At least 8 characters, with upper- and lower-case letters and a number."
+              />
+              <Button type="submit" variant="contained" disabled={busy} fullWidth>
+                {busy ? "Setting password…" : "Set password and continue"}
+              </Button>
+            </Stack>
+          </Box>
+        ) : needsConfirm ? (
           <Box component="form" onSubmit={onConfirm}>
             <Stack spacing={2}>
               <TextField

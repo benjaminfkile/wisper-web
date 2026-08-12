@@ -48,26 +48,75 @@ function cognitoUser(email: string): CognitoUser {
   return new CognitoUser({ Username: email, Pool: getPool() });
 }
 
+// An admin-created account signs in once with a temporary password and must set a
+// permanent one to finish (Cognito's NEW_PASSWORD_REQUIRED challenge). The
+// challenged CognitoUser instance holds the session state needed to answer the
+// challenge, so we stash it here between `signIn` and `completeNewPassword`.
+const pendingNewPassword = new Map<string, CognitoUser>();
+
 /** Extract the JWT this app sends as the API bearer token (the Cognito ID token). */
 function jwtFromSession(session: CognitoUserSession): string {
   return session.getIdToken().getJwtToken();
 }
 
 /**
- * Sign in with email + password. Resolves the ID-token JWT on success. Rejects
- * with an AuthError (code "new_password_required" when the account was created
- * by an admin and must set a password first).
+ * Sign in with email + password. Resolves the ID-token JWT on success. When the
+ * account was admin-created and still carries a temporary password, rejects with
+ * an AuthError coded "new_password_required" AND stashes the challenged user so
+ * {@link completeNewPassword} can finish the sign-in with a permanent password.
  */
 export function signIn(email: string, password: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const user = cognitoUser(email);
     const details = new AuthenticationDetails({ Username: email, Password: password });
     user.authenticateUser(details, {
-      onSuccess: (session) => resolve(jwtFromSession(session)),
+      onSuccess: (session) => {
+        pendingNewPassword.delete(email);
+        resolve(jwtFromSession(session));
+      },
       onFailure: (err) => reject(new AuthError(err.message || String(err), err.code)),
-      newPasswordRequired: () =>
-        reject(new AuthError("A new password is required for this account.", "new_password_required")),
+      newPasswordRequired: () => {
+        // Keep the challenged user so the caller can answer with a new password.
+        pendingNewPassword.set(email, user);
+        reject(
+          new AuthError("Set a new password to finish signing in.", "new_password_required"),
+        );
+      },
     });
+  });
+}
+
+/**
+ * Finish an admin-invited sign-in by setting a permanent password (answers the
+ * NEW_PASSWORD_REQUIRED challenge stashed by {@link signIn}). Resolves the
+ * ID-token JWT — the account is fully signed in. Rejects "challenge_expired" if
+ * called without a pending challenge (e.g. after a reload), so the UI can send
+ * the user back to re-enter their email + temporary password.
+ */
+export function completeNewPassword(email: string, newPassword: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const user = pendingNewPassword.get(email);
+    if (!user) {
+      return reject(
+        new AuthError(
+          "Your sign-in expired. Enter your email and temporary password again.",
+          "challenge_expired",
+        ),
+      );
+    }
+    // Cognito rejects immutable attributes (e.g. email) here, so send none.
+    user.completeNewPasswordChallenge(
+      newPassword,
+      {},
+      {
+        onSuccess: (session) => {
+          pendingNewPassword.delete(email);
+          resolve(jwtFromSession(session));
+        },
+        onFailure: (err) =>
+          reject(new AuthError(err.message || String(err), (err as { code?: string }).code)),
+      },
+    );
   });
 }
 
