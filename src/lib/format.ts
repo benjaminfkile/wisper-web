@@ -8,9 +8,18 @@ const SECONDS_PER_HOUR = 3600;
 const MINUTES_PER_HOUR = 60;
 const MB_PER_GB = 1024;
 
-/** Format a cents amount as a dollar string, e.g. `150` -> `$1.50`. */
+/**
+ * Format a cents amount as a dollar string, e.g. `150` -> `$1.50` and
+ * `123456` -> `$1,234.56`. Uses `en-US` locale grouping so amounts of $1,000
+ * or more render with comma thousands separators; smaller values are
+ * unaffected.
+ */
 export function formatUsd(cents: number, fractionDigits = 2): string {
-  return `$${(cents / CENTS_PER_USD).toFixed(fractionDigits)}`;
+  const dollars = cents / CENTS_PER_USD;
+  return `$${dollars.toLocaleString("en-US", {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  })}`;
 }
 
 /**

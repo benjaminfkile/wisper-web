@@ -19,16 +19,35 @@ describe("format helpers", () => {
     expect(formatUsd(25)).toBe("$0.25");
   });
 
+  it("formatUsd adds thousands separators once the amount reaches $1,000", () => {
+    // Just under the threshold: no separator (values <$1,000 keep their old shape).
+    expect(formatUsd(99999)).toBe("$999.99");
+    // Exactly $1,000 flips on grouping.
+    expect(formatUsd(100000)).toBe("$1,000.00");
+    // Task examples.
+    expect(formatUsd(123456)).toBe("$1,234.56");
+    expect(formatUsd(100000000)).toBe("$1,000,000.00");
+    // Negative amounts keep their existing $-prefix shape and still group.
+    expect(formatUsd(-123456)).toBe("$-1,234.56");
+    // The `fractionDigits` override still works with grouping.
+    expect(formatUsd(100000, 0)).toBe("$1,000");
+  });
+
   it("formatSignedUsd prefixes an explicit credit/debit sign", () => {
     expect(formatSignedUsd(200)).toBe("+$2.00");
     expect(formatSignedUsd(-150)).toBe("−$1.50");
     expect(formatSignedUsd(0)).toBe("+$0.00");
+    // Grouping applies inside the signed wrapper too.
+    expect(formatSignedUsd(-123456)).toBe("−$1,234.56");
+    expect(formatSignedUsd(100000000)).toBe("+$1,000,000.00");
   });
 
   it("formatPricePerHour renders a cents-per-minute price as an hourly rate", () => {
     // 5 cents/minute -> $3.00/hr
     expect(formatPricePerHour(5)).toBe("$3.00/hr");
     expect(formatPricePerHour(0)).toBe("$0.00/hr");
+    // 2000 cents/minute -> $1,200.00/hr — grouping carries through.
+    expect(formatPricePerHour(2000)).toBe("$1,200.00/hr");
   });
 
   it("converts between cents-per-minute and dollars-per-hour", () => {
