@@ -546,13 +546,19 @@ export interface CreateApiKeyRequest {
 }
 
 /**
- * Response for POST /v1/me/api-keys. The `token` is the full `wck_live_<64-hex>`
+ * Response for POST /v1/me/api-keys (flat, mirroring the API's
+ * ApiKeyMintedResponse — docs/API.md §5). `key` is the full `wck_live_<64-hex>`
  * secret, returned EXACTLY once at creation and never retrievable again, so
- * callers must surface it now. `key` is the stored metadata for the list.
+ * callers must surface it now; the remaining fields are the stored metadata.
  */
 export interface CreateApiKeyResponse {
-  key: ApiKey;
-  token: string;
+  id: string;
+  name: string;
+  /** The full bearer secret — shown once at mint, never persisted client-side. */
+  key: string;
+  token_prefix: string;
+  scopes: ApiKeyScope[];
+  created_at: string;
 }
 
 /** Stripe Connect account state for the host, surfaced with earnings. */

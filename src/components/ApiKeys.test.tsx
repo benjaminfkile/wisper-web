@@ -49,14 +49,12 @@ const REVOKED_KEY: ApiKey = {
 
 const FULL_TOKEN = "wck_live_" + "a".repeat(64);
 const CREATED: CreateApiKeyResponse = {
-  key: {
-    id: "key-3",
-    name: "new-key",
-    token_prefix: "wck_live_aaaa",
-    scopes: ["consumer"],
-    created_at: "2026-07-20T00:00:00Z",
-  },
-  token: FULL_TOKEN,
+  id: "key-3",
+  name: "new-key",
+  key: FULL_TOKEN,
+  token_prefix: "wck_live_aaaa",
+  scopes: ["consumer"],
+  created_at: "2026-07-20T00:00:00Z",
 };
 
 beforeEach(() => {

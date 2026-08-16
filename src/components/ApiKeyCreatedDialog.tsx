@@ -93,7 +93,7 @@ export default function ApiKeyCreatedDialog({ result, onClose }: ApiKeyCreatedDi
         {result && (
           <Stack spacing={2.5}>
             <Typography variant="body2" color="text.secondary">
-              <strong>{result.key.name}</strong> is ready. Send it as{" "}
+              <strong>{result.name}</strong> is ready. Send it as{" "}
               <code>Authorization: Bearer &lt;key&gt;</code> from your orchestrator or automation.
             </Typography>
 
@@ -102,15 +102,15 @@ export default function ApiKeyCreatedDialog({ result, onClose }: ApiKeyCreatedDi
               store it somewhere safe — you will not see this again.
             </Alert>
 
-            <CopyField label="API key" value={result.token} />
+            <CopyField label="API key" value={result.key} />
 
-            {result.key.scopes.length > 0 && (
+            {result.scopes.length > 0 && (
               <Box>
                 <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: 0.5 }}>
                   Scopes
                 </Typography>
                 <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap" }}>
-                  {result.key.scopes.map((scope) => (
+                  {result.scopes.map((scope) => (
                     <Chip key={scope} size="small" label={scope} variant="outlined" />
                   ))}
                 </Stack>

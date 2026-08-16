@@ -133,8 +133,16 @@ export default function ApiKeys() {
   const handleCreated = useCallback((result: CreateApiKeyResponse) => {
     setCreateOpen(false);
     setCreated(result);
-    // Optimistically show the new key's metadata at the top of the list.
-    setKeys((prev) => (prev ? [result.key, ...prev] : [result.key]));
+    // Optimistically show the new key's metadata at the top of the list. The
+    // secret (`result.key`) is deliberately NOT part of the list row.
+    const row: ApiKey = {
+      id: result.id,
+      name: result.name,
+      token_prefix: result.token_prefix,
+      scopes: result.scopes,
+      created_at: result.created_at,
+    };
+    setKeys((prev) => (prev ? [row, ...prev] : [row]));
   }, []);
 
   async function handleConfirmRevoke() {

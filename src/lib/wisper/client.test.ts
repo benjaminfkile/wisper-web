@@ -293,10 +293,14 @@ describe("wisper client", () => {
     expect(keys).toEqual([key]);
   });
 
-  it("createApiKey POSTs name + scopes and returns the full token once", async () => {
+  it("createApiKey POSTs name + scopes and returns the full key once (flat mint response)", async () => {
     const body = {
-      key: { id: "k2", name: "bot", token_prefix: "wck_live_ef01", scopes: ["consumer"], created_at: "" },
-      token: "wck_live_" + "a".repeat(64),
+      id: "k2",
+      name: "bot",
+      key: "wck_live_" + "a".repeat(64),
+      token_prefix: "wck_live_ef01",
+      scopes: ["consumer"],
+      created_at: "",
     };
     const spy = stubFetch(() => jsonResponse(body));
     const result = await wisper.createApiKey({ name: "bot", scopes: ["consumer"] });
@@ -304,7 +308,8 @@ describe("wisper client", () => {
     expect(spy.mock.calls[0][0]).toBe("/wisper/v1/me/api-keys");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toEqual({ name: "bot", scopes: ["consumer"] });
-    expect(result.token).toBe(body.token);
+    expect(result.key).toBe(body.key);
+    expect(result.scopes).toEqual(["consumer"]);
   });
 
   it("revokeApiKey DELETEs /v1/me/api-keys/:id (encoded)", async () => {
